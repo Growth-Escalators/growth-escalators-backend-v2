@@ -81,7 +81,7 @@ if (process.env.NODE_ENV === 'production') {
     '/health', '/stats',
   ];
 
-  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+  app.get('/{*path}', (req: Request, res: Response, next: NextFunction) => {
     if (API_PREFIXES.some((p) => req.path.startsWith(p))) return next();
     res.sendFile(path.join(clientDist, 'index.html'));
   });
