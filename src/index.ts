@@ -102,9 +102,12 @@ if (process.env.CRM_EXTRA_HOST) CRM_HOSTS.push(process.env.CRM_EXTRA_HOST);
 // ---------------------------------------------------------------------------
 const consultingDist = path.join(__dirname, '..', 'consulting');
 
-// Path-based: /consulting on any host
-app.use('/consulting', express.static(consultingDist));
+// Path-based: /consulting and /consulting/* on any host
 app.get('/consulting', (_req: Request, res: Response) => {
+  res.sendFile(path.join(consultingDist, 'index.html'));
+});
+app.use('/consulting', express.static(consultingDist));
+app.get('/consulting/{*path}', (_req: Request, res: Response) => {
   res.sendFile(path.join(consultingDist, 'index.html'));
 });
 
