@@ -76,6 +76,71 @@ router.post('/', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/pipelines/reorder — bulk update sortOrder
+// ---------------------------------------------------------------------------
+router.post('/reorder', async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  const { pipelineIds } = req.body as { pipelineIds?: string[] };
+  if (!Array.isArray(pipelineIds) || pipelineIds.length === 0) {
+    res.status(400).json({ error: 'pipelineIds array is required' });
+    return;
+  }
+  await Promise.all(
+    pipelineIds.map((id, index) =>
+      db.update(pipelines)
+        .set({ sortOrder: index })
+        .where(and(eq(pipelines.id, id), eq(pipelines.tenantId, tenantId)))
+    )
+  );
+  res.json({ updated: pipelineIds.length });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/pipelines/duplicate/:id
+// ---------------------------------------------------------------------------
+router.post('/duplicate/:id', async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.user!.tenantId;
+  const existing = await db.select().from(pipelines)
+    .where(and(eq(pipelines.id, id), eq(pipelines.tenantId, tenantId)))
+    .limit(1);
+  if (existing.length === 0) {
+    res.status(404).json({ error: 'pipeline not found' });
+    return;
+  }
+  const orig = existing[0];
+  const newSlug = `${orig.slug}-copy-${Date.now()}`;
+  const inserted = await db.insert(pipelines).values({
+    tenantId,
+    name: `${orig.name} (Copy)`,
+    slug: newSlug,
+    stages: orig.stages,
+    color: orig.color,
+    sortOrder: (orig.sortOrder ?? 0) + 1,
+  }).returning();
+  res.status(201).json(inserted[0]);
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/pipelines/:id
+// ---------------------------------------------------------------------------
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.user!.tenantId;
+  const countResult = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(deals)
+    .where(and(eq(deals.tenantId, tenantId), eq(deals.pipelineId, id)));
+  const dealCount = countResult[0]?.count ?? 0;
+  if (dealCount > 0) {
+    res.status(400).json({ error: `Cannot delete pipeline with existing deals. Move or archive deals first.` });
+    return;
+  }
+  await db.delete(pipelines).where(and(eq(pipelines.id, id), eq(pipelines.tenantId, tenantId)));
+  res.json({ deleted: true });
+});
+
+// ---------------------------------------------------------------------------
 // PATCH /api/pipelines/:id — update pipeline
 // ---------------------------------------------------------------------------
 router.patch('/:id', async (req, res) => {
