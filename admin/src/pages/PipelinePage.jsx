@@ -426,7 +426,14 @@ export default function PipelinePage() {
       method: 'PATCH',
       body: JSON.stringify({ metadata: { ...(deal.metadata ?? {}), archived } }),
     });
-    loadDeals();
+    if (!showArchived) {
+      // Remove card from view immediately — no reload needed
+      setKanbanStages((prev) =>
+        prev.map((s) => ({ ...s, deals: s.deals.filter((d) => d.id !== dealId) }))
+      );
+    } else {
+      loadDeals();
+    }
   }
 
   function applyMove(deal, fromStage, toStage, destIndex) {

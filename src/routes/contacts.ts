@@ -94,11 +94,32 @@ router.get('/', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /contacts/counts — single-query smart list counts (must be before /:id)
+// ---------------------------------------------------------------------------
+router.get('/counts', async (req, res) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const result = await db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'qualified') AS hot,
+        COUNT(*) FILTER (WHERE status = 'lead')      AS uncontacted,
+        COUNT(*) FILTER (WHERE source = 'checkout')  AS ecom,
+        COUNT(*) FILTER (WHERE source = 'calcom')    AS consulting
+      FROM contacts WHERE tenant_id = ${tenantId}::uuid
+    `);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('[contacts] counts error:', err);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /contacts/:id/conversation — unified timeline
 // ---------------------------------------------------------------------------
 router.get('/:id/conversation', async (req, res) => {
   const { id } = req.params;
-
+  try {
   const [msgs, evts, bkgs, nts] = await Promise.all([
     db.execute(sql`
       SELECT id::text, 'message' as item_type, channel, direction, content,
@@ -142,6 +163,10 @@ router.get('/:id/conversation', async (req, res) => {
    .slice(0, 100);
 
   res.json({ items: all });
+  } catch (err) {
+    console.error('[contacts] conversation error:', err);
+    res.status(500).json({ error: 'internal server error' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -325,6 +350,10 @@ router.post('/bulk-tag', async (req, res) => {
     res.status(400).json({ error: 'contactIds array is required' });
     return;
   }
+  if (contactIds.length > 500) {
+    res.status(400).json({ error: 'maximum 500 contacts per bulk operation' });
+    return;
+  }
   if (!Array.isArray(tags)) {
     res.status(400).json({ error: 'tags array is required' });
     return;
@@ -364,6 +393,10 @@ router.post('/bulk-assign', async (req, res) => {
     res.status(400).json({ error: 'contactIds array is required' });
     return;
   }
+  if (contactIds.length > 500) {
+    res.status(400).json({ error: 'maximum 500 contacts per bulk operation' });
+    return;
+  }
   if (!assignedTo) {
     res.status(400).json({ error: 'assignedTo is required' });
     return;
@@ -388,6 +421,10 @@ router.post('/bulk-delete', async (req, res) => {
 
   if (!Array.isArray(contactIds) || contactIds.length === 0) {
     res.status(400).json({ error: 'contactIds array is required' });
+    return;
+  }
+  if (contactIds.length > 500) {
+    res.status(400).json({ error: 'maximum 500 contacts per bulk operation' });
     return;
   }
 
@@ -474,6 +511,10 @@ router.post('/bulk-sequence', async (req, res) => {
 
   if (!Array.isArray(contactIds) || contactIds.length === 0) {
     res.status(400).json({ error: 'contactIds array is required' });
+    return;
+  }
+  if (contactIds.length > 500) {
+    res.status(400).json({ error: 'maximum 500 contacts per bulk operation' });
     return;
   }
   if (!sequenceName) {
