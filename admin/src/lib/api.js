@@ -17,7 +17,13 @@ export async function apiFetch(path, options = {}) {
     return null;
   }
 
-  return res.json();
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error(data?.error || `Request failed (${res.status})`);
+  }
+
+  return data;
 }
 
 export function getUser() {

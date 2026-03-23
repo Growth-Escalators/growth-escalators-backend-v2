@@ -523,16 +523,14 @@ export default function ContactsPage() {
 
   const totalPages = Math.ceil(total / limit);
 
-  // Smart list counts
+  // Smart list counts — single query instead of 4 separate calls
   const [listCounts, setListCounts] = useState({});
   useEffect(() => {
-    Promise.all(
-      SMART_LISTS.filter((l) => l.id !== 'all').map(async (l) => {
-        const p = new URLSearchParams({ limit: '1', ...l.filters });
-        const d = await apiFetch(`/contacts?${p}`);
-        return [l.id, d?.total ?? 0];
+    apiFetch('/contacts/counts')
+      .then((d) => {
+        if (d) setListCounts({ hot: +d.hot, uncontacted: +d.uncontacted, ecom: +d.ecom, consulting: +d.consulting });
       })
-    ).then((results) => setListCounts(Object.fromEntries(results)));
+      .catch(() => {});
   }, []);
 
   function toggleSelect(id) {

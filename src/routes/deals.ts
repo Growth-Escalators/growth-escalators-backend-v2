@@ -9,7 +9,7 @@ const router = Router();
 // ---------------------------------------------------------------------------
 router.get('/', async (req, res) => {
   const tenantId = req.user!.tenantId;
-  const { stage, contactId, serviceType, pipelineId, assignedTo, limit = '500', includeArchived } = req.query as Record<string, string>;
+  const { stage, contactId, serviceType, pipelineId, assignedTo, limit = '100', offset = '0', includeArchived } = req.query as Record<string, string>;
 
   const conditions: ReturnType<typeof eq>[] = [eq(deals.tenantId, tenantId)];
   if (stage) conditions.push(eq(deals.stage, stage));
@@ -21,24 +21,30 @@ router.get('/', async (req, res) => {
     conditions.push(sql`(${deals.metadata}->>'archived') IS DISTINCT FROM 'true'` as any);
   }
 
-  const rows = await db
-    .select({
-      deal: deals,
-      pipelineName: pipelines.name,
-      pipelineColor: pipelines.color,
-    })
-    .from(deals)
-    .leftJoin(pipelines, eq(deals.pipelineId, pipelines.id))
-    .where(and(...conditions))
-    .limit(Math.min(parseInt(limit, 10), 1000));
+  try {
+    const rows = await db
+      .select({
+        deal: deals,
+        pipelineName: pipelines.name,
+        pipelineColor: pipelines.color,
+      })
+      .from(deals)
+      .leftJoin(pipelines, eq(deals.pipelineId, pipelines.id))
+      .where(and(...conditions))
+      .limit(Math.min(parseInt(limit, 10), 1000))
+      .offset(parseInt(offset, 10));
 
-  const enriched = rows.map((r) => ({
-    ...r.deal,
-    pipelineName: r.pipelineName ?? null,
-    pipelineColor: r.pipelineColor ?? null,
-  }));
+    const enriched = rows.map((r) => ({
+      ...r.deal,
+      pipelineName: r.pipelineName ?? null,
+      pipelineColor: r.pipelineColor ?? null,
+    }));
 
-  res.json({ deals: enriched });
+    res.json({ deals: enriched });
+  } catch (err) {
+    console.error('[deals] GET / error:', err);
+    res.status(500).json({ error: 'internal server error' });
+  }
 });
 
 // ---------------------------------------------------------------------------

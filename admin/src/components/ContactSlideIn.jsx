@@ -340,7 +340,7 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
                     <p className="text-sm">No conversation yet</p>
                   </div>
                 ) : (
-                  conversation.map((item, i) => <ConversationItem key={i} item={item} />)
+                  conversation.map((item) => <ConversationItem key={item.id} item={item} />)
                 )}
               </div>
               <div className="px-4 py-3 border-t border-slate-100 bg-white shrink-0">
