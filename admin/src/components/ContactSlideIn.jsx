@@ -156,6 +156,8 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
   const [notes, setNotes] = useState([]);
   const [convLoading, setConvLoading] = useState(false);
   const [notesLoading, setNotesLoading] = useState(false);
+  const [tasks, setTasks] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
   const [noteInput, setNoteInput] = useState('');
   const [addingNote, setAddingNote] = useState(false);
   const [editNoteId, setEditNoteId] = useState(null);
@@ -198,6 +200,18 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
   useEffect(() => {
     if (activeTab === 'notes') loadNotes();
   }, [activeTab, loadNotes]);
+
+  const loadTasks = useCallback(async () => {
+    if (!id) return;
+    setTasksLoading(true);
+    const d = await apiFetch(`/api/clickup/tasks/${id}`);
+    if (d?.tasks) setTasks(d.tasks);
+    setTasksLoading(false);
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === 'tasks') loadTasks();
+  }, [activeTab, loadTasks]);
 
   useEffect(() => {
     function handler(e) { if (e.key === 'Escape') onClose(); }
@@ -252,6 +266,7 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
     { id: 'conversation', label: 'Conversation' },
     { id: 'details', label: 'Details' },
     { id: 'notes', label: 'Notes' },
+    { id: 'tasks', label: `Tasks${tasks.length > 0 ? ` (${tasks.length})` : ''}` },
     { id: 'deals', label: `Deals${deals.length > 0 ? ` (${deals.length})` : ''}` },
   ];
 
@@ -566,6 +581,70 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
                   ))
                 )}
               </div>
+            </div>
+          )}
+
+          {/* TASKS TAB */}
+          {activeTab === 'tasks' && (
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+              {tasksLoading ? (
+                <div className="flex justify-center py-8 text-slate-400 text-sm">Loading tasks…</div>
+              ) : tasks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-300">
+                  <svg className="w-10 h-10 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <p className="text-sm">No ClickUp tasks yet</p>
+                </div>
+              ) : (
+                tasks.map((task) => (
+                  <div key={task.id} className="border border-slate-200 rounded-xl p-4 bg-white">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className="text-sm font-semibold text-slate-900 flex-1">{task.name}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
+                        task.status?.status === 'complete' || task.status?.status === 'closed'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : task.status?.status === 'in progress'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {task.status?.status ?? 'to do'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {task.priority?.priority && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          task.priority.priority === '1' ? 'bg-red-100 text-red-600'
+                          : task.priority.priority === '2' ? 'bg-orange-100 text-orange-700'
+                          : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {task.priority.priority === '1' ? 'Urgent' : task.priority.priority === '2' ? 'High' : 'Normal'}
+                        </span>
+                      )}
+                      {task.due_date && (
+                        <span className="text-xs text-slate-400">
+                          Due: {new Date(Number(task.due_date)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </span>
+                      )}
+                      {task.assignees?.length > 0 && (
+                        <span className="text-xs text-slate-400">
+                          → {task.assignees.map(a => a.username).join(', ')}
+                        </span>
+                      )}
+                    </div>
+                    {task.url && (
+                      <a
+                        href={task.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-500 hover:text-blue-700 mt-2 inline-block"
+                      >
+                        Open in ClickUp →
+                      </a>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           )}
 
