@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { eq } from 'drizzle-orm';
-import { db, tenants, deals, contacts, processedEvents } from '../db/index';
+import { db, tenants, deals, contacts, processedEvents, events } from '../db/index';
 import { findOrCreateContact } from '../services/contactService';
+import { sendPurchaseEvent } from '../services/metaCapi';
 
 const router = Router();
 
@@ -199,6 +200,41 @@ router.post('/webhook', async (req: Request, res: Response) => {
       serviceType: 'ecom',
       value: String(orderAmount),
     });
+
+    // 6a. Fire CAPI Purchase event (fire-and-forget)
+    const CONTENT_NAMES: Record<string, string> = {
+      paid_9: 'D2C Funnel Breakdown Pack',
+      paid_208: 'D2C Funnel Pack + Growth Kit',
+      paid_508: 'D2C Funnel Pack + Growth Audit',
+      paid_707: 'D2C Complete Bundle',
+    };
+    const ipAddress = String(
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
+      req.headers['x-real-ip'] ||
+      req.socket.remoteAddress ||
+      ''
+    ) || undefined;
+    const userAgent = req.headers['user-agent'] || undefined;
+
+    sendPurchaseEvent({
+      contact: { id: contact.id, firstName, lastName, email: email || undefined },
+      value: orderAmount,
+      orderId: cfPaymentId,
+      productName: CONTENT_NAMES[stage] ?? 'D2C Product',
+      ipAddress,
+      userAgent,
+    })
+      .then((result) => {
+        if (result.success) {
+          db.insert(events).values({
+            tenantId: tenant.id,
+            contactId: contact.id,
+            eventType: 'capi_purchase_sent',
+            payload: { eventId: result.eventId, orderId: cfPaymentId, value: orderAmount, stage },
+          }).catch(() => {});
+        }
+      })
+      .catch((e: Error) => console.error('[cashfree] CAPI purchase error:', e.message));
 
     // 7. Update contact status and metadata
     const existingContact = await db

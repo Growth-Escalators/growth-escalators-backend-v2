@@ -93,6 +93,8 @@ const FILTER_MAP = { 'Backend': 'backend', 'n8n': 'n8n', 'Brevo': 'brevo', 'Meta
 
 export default function SystemHealthPage() {
   const [data, setData] = useState(null);
+  const [capiData, setCapiData] = useState(null);
+  const [clickupData, setClickupData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [secondsAgo, setSecondsAgo] = useState(0);
   const [activityFilter, setActivityFilter] = useState('All');
@@ -101,11 +103,17 @@ export default function SystemHealthPage() {
   const refreshRef = useRef(null);
 
   const fetchData = useCallback(async () => {
-    const result = await apiFetch('/api/system/health');
+    const [result, capiResult, clickupResult] = await Promise.all([
+      apiFetch('/api/system/health'),
+      apiFetch('/api/capi/status').catch(() => null),
+      apiFetch('/api/clickup/workspace').catch(() => null),
+    ]);
     if (result?.checkedAt) {
       setData(result);
       setSecondsAgo(0);
     }
+    setCapiData(capiResult);
+    setClickupData(clickupResult);
     setLoading(false);
   }, []);
 
@@ -275,6 +283,31 @@ export default function SystemHealthPage() {
                 { label: 'Assigned today', value: roundRobin.totalAssignmentsToday, color: 'blue' },
               ]}
               footer={roundRobin.members?.length > 0 ? roundRobin.members.map(m => `${m.name}: ${m.assigned}`).join(' · ') : null}
+            />
+            <ServiceCard
+              name="Meta CAPI"
+              status={capiData?.pixelId && capiData?.tokenConfigured ? 'healthy' : 'warning'}
+              metrics={[
+                { label: 'Pixel ID', value: capiData?.pixelId ? capiData.pixelId.toString().slice(-6) : 'Not set', color: capiData?.pixelId ? 'green' : 'red' },
+                { label: 'Token', value: capiData?.tokenConfigured ? 'Set' : 'Missing', color: capiData?.tokenConfigured ? 'green' : 'red' },
+                { label: 'Recent events', value: capiData?.recentEvents?.length ?? 0, color: 'blue' },
+              ]}
+              footer="Server-side pixel events via Conversions API"
+            />
+            <ServiceCard
+              name="ClickUp CRM Tasks"
+              status={
+                clickupData?.configured?.listId && clickupData.configured.listId !== 'not set' && clickupData.configured.listId !== 'placeholder_will_update'
+                  ? 'healthy'
+                  : 'warning'
+              }
+              metrics={[
+                { label: 'List ID', value: clickupData?.configured?.listId && clickupData.configured.listId !== 'not set' ? 'Set' : 'Not set', color: clickupData?.configured?.listId && clickupData.configured.listId !== 'not set' ? 'green' : 'amber' },
+                { label: 'Jatin ID', value: clickupData?.configured?.jatinId && clickupData.configured.jatinId !== 'not set' ? 'Set' : 'Missing', color: clickupData?.configured?.jatinId && clickupData.configured.jatinId !== 'not set' ? 'green' : 'amber' },
+                { label: 'Saksham ID', value: clickupData?.configured?.sakshamId && clickupData.configured.sakshamId !== 'not set' ? 'Set' : 'Missing', color: clickupData?.configured?.sakshamId && clickupData.configured.sakshamId !== 'not set' ? 'green' : 'amber' },
+                { label: 'Members', value: clickupData?.members?.length ?? 0, color: 'blue' },
+              ]}
+              footer={clickupData?.teamName ? `Team: ${clickupData.teamName}` : 'Run /api/clickup/setup to configure'}
             />
           </div>
 

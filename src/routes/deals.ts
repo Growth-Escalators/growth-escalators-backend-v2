@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { eq, and, sql } from 'drizzle-orm';
 import { db, deals, contacts, pipelines } from '../db/index';
+import { createOnboardingTask, createFollowUpTask, createLostDealAnalysisTask } from '../services/clickupService';
 
 const router = Router();
 
@@ -112,6 +113,28 @@ router.patch('/:id', async (req, res) => {
   if (stage !== undefined && stage !== existing[0].stage) {
     await db.update(contacts).set({ lastActivityAt: new Date(), updatedAt: new Date() })
       .where(eq(contacts.id, existing[0].contactId));
+
+    // Fire ClickUp tasks on key stage transitions (fire-and-forget)
+    const stageLC = stage.toLowerCase();
+    if (stageLC === 'won' || stageLC === 'proposal' || stageLC === 'lost') {
+      const deal = updated[0];
+      db.select({ firstName: contacts.firstName, lastName: contacts.lastName })
+        .from(contacts)
+        .where(eq(contacts.id, deal.contactId))
+        .limit(1)
+        .then(([c]) => {
+          const contactName = [c?.firstName, c?.lastName].filter(Boolean).join(' ') || 'Contact';
+          const dealValue = deal.dealValue ?? undefined;
+          if (stageLC === 'won') {
+            return createOnboardingTask({ contactName, contactId: deal.contactId, dealValue: dealValue ?? undefined });
+          } else if (stageLC === 'proposal') {
+            return createFollowUpTask({ contactName, contactId: deal.contactId, dealValue: dealValue ?? undefined });
+          } else {
+            return createLostDealAnalysisTask({ contactName, contactId: deal.contactId, lostReason: deal.lostReason ?? 'Not specified', dealValue: dealValue ?? undefined });
+          }
+        })
+        .catch((e: Error) => console.error('[deals] ClickUp task error:', e.message));
+    }
   }
 
   res.json(updated[0]);
