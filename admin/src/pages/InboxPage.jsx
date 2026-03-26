@@ -1,0 +1,367 @@
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import Sidebar from '../components/Sidebar.jsx';
+import { apiFetch } from '../lib/api.js';
+import { MessageSquare, Send, Search, Check, CheckCheck, Image, FileText, Phone, User } from 'lucide-react';
+import { io } from 'socket.io-client';
+
+function timeAgo(isoDate) {
+  if (!isoDate) return '';
+  const d = new Date(isoDate);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return 'now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+function StatusIcon({ status }) {
+  if (status === 'read') return <CheckCheck className="w-3.5 h-3.5 text-sky-500" />;
+  if (status === 'delivered') return <CheckCheck className="w-3.5 h-3.5 text-slate-400" />;
+  if (status === 'sent') return <Check className="w-3.5 h-3.5 text-slate-400" />;
+  if (status === 'failed') return <span className="text-xs text-red-400">!</span>;
+  return null;
+}
+
+function MessageBubble({ msg }) {
+  const isOut = msg.direction === 'outbound';
+  const isTemplate = msg.messageType === 'template';
+  const hasMedia = msg.mediaUrl && msg.messageType !== 'text';
+
+  return (
+    <div className={`flex ${isOut ? 'justify-end' : 'justify-start'} mb-2`}>
+      <div className={`max-w-xs lg:max-w-md xl:max-w-lg rounded-2xl px-4 py-2 ${
+        isOut ? 'bg-green-600 text-white rounded-br-sm' : 'bg-white text-slate-800 border border-slate-100 rounded-bl-sm'
+      }`}>
+        {isTemplate && (
+          <p className="text-xs italic opacity-75 mb-1">[Template: {msg.templateName}]</p>
+        )}
+        {hasMedia && (
+          <div className="flex items-center gap-2 mb-1">
+            {msg.messageType === 'image' ? <Image className="w-4 h-4 opacity-75" /> : <FileText className="w-4 h-4 opacity-75" />}
+            <span className="text-xs opacity-75">[{msg.messageType}]</span>
+          </div>
+        )}
+        <p className="text-sm break-words whitespace-pre-wrap">{msg.content}</p>
+        <div className={`flex items-center gap-1 mt-1 ${isOut ? 'justify-end' : 'justify-start'}`}>
+          <span className={`text-xs ${isOut ? 'text-green-200' : 'text-slate-400'}`}>
+            {timeAgo(msg.sentAt)}
+          </span>
+          {isOut && <StatusIcon status={msg.status} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplateSelector({ templates, onSelect, onClose }) {
+  return (
+    <div className="absolute bottom-full left-0 mb-2 bg-white rounded-xl border border-slate-200 shadow-lg w-72 max-h-60 overflow-y-auto z-10">
+      <div className="px-3 py-2 border-b border-slate-100">
+        <p className="text-xs font-semibold text-slate-500">Send Template</p>
+      </div>
+      {templates.length === 0 && <p className="p-3 text-xs text-slate-400 text-center">No approved templates</p>}
+      {templates.map(t => (
+        <button
+          key={t.id}
+          onClick={() => { onSelect(t); onClose(); }}
+          className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-50 last:border-0"
+        >
+          <p className="text-sm font-medium text-slate-800">{t.templateName}</p>
+          <p className="text-xs text-slate-400">{t.category} · {t.language}</p>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function InboxPage() {
+  const [conversations, setConversations] = useState([]);
+  const [selectedConv, setSelectedConv] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [search, setSearch] = useState('');
+  const [newMsg, setNewMsg] = useState('');
+  const [sending, setSending] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+  const socketRef = useRef(null);
+
+  // Load conversations + templates
+  useEffect(() => {
+    Promise.all([
+      apiFetch('/api/inbox/conversations').catch(() => ({ conversations: [] })),
+      apiFetch('/api/inbox/templates').catch(() => ({ templates: [] })),
+    ]).then(([convData, tmplData]) => {
+      setConversations(convData?.conversations || []);
+      setTemplates(tmplData?.templates || []);
+      setLoading(false);
+    });
+  }, []);
+
+  // Socket.io for real-time
+  useEffect(() => {
+    const socket = io('/', { path: '/socket.io', transports: ['websocket', 'polling'] });
+    socketRef.current = socket;
+
+    socket.on('new_message', (msg) => {
+      // Update message list if this contact is selected
+      if (selectedConv && msg.contactId === selectedConv.contactId) {
+        setMessages(prev => [...prev, msg]);
+      }
+      // Update conversation list
+      setConversations(prev => {
+        const updated = prev.map(c => {
+          if (c.contactId === msg.contactId) {
+            return {
+              ...c,
+              lastMessage: msg.content,
+              lastMessageAt: msg.sentAt,
+              lastDirection: msg.direction,
+              unreadCount: msg.direction === 'inbound' ? Number(c.unreadCount || 0) + 1 : c.unreadCount,
+            };
+          }
+          return c;
+        });
+        // Add new conversation if not present
+        if (!prev.find(c => c.contactId === msg.contactId)) {
+          return [{ contactId: msg.contactId, contactName: 'New Contact', lastMessage: msg.content, lastMessageAt: msg.sentAt, lastDirection: msg.direction, unreadCount: msg.direction === 'inbound' ? 1 : 0 }, ...updated];
+        }
+        return updated.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+      });
+    });
+
+    socket.on('message_status', ({ waMessageId, status }) => {
+      setMessages(prev => prev.map(m =>
+        m.externalId === waMessageId ? { ...m, status } : m
+      ));
+    });
+
+    return () => socket.disconnect();
+  }, [selectedConv]);
+
+  // Join/leave socket room on conversation change
+  useEffect(() => {
+    if (!socketRef.current) return;
+    if (selectedConv) {
+      socketRef.current.emit('join_contact', selectedConv.contactId);
+    }
+    return () => {
+      if (selectedConv) socketRef.current?.emit('leave_contact', selectedConv.contactId);
+    };
+  }, [selectedConv?.contactId]);
+
+  // Load messages for selected conversation
+  const loadMessages = useCallback(async (conv) => {
+    setSelectedConv(conv);
+    setMsgLoading(true);
+    setMessages([]);
+    try {
+      const data = await apiFetch(`/api/inbox/conversations/${conv.contactId}/messages`);
+      setMessages(data?.messages || []);
+      // Mark as read
+      await apiFetch(`/api/inbox/conversations/${conv.contactId}/read`, { method: 'POST' }).catch(() => {});
+      setConversations(prev => prev.map(c =>
+        c.contactId === conv.contactId ? { ...c, unreadCount: '0' } : c
+      ));
+    } finally {
+      setMsgLoading(false);
+    }
+  }, []);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  async function sendMessage() {
+    if (!newMsg.trim() || !selectedConv || sending) return;
+    setSending(true);
+    try {
+      const data = await apiFetch(`/api/inbox/conversations/${selectedConv.contactId}/send`, {
+        method: 'POST',
+        body: JSON.stringify({ message: newMsg }),
+      });
+      setMessages(prev => [...prev, data.message]);
+      setNewMsg('');
+    } catch (e) {
+      console.error('Send failed:', e);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendTemplate(template) {
+    if (!selectedConv) return;
+    try {
+      const data = await apiFetch(`/api/inbox/conversations/${selectedConv.contactId}/send-template`, {
+        method: 'POST',
+        body: JSON.stringify({ templateName: template.templateName, languageCode: template.language || 'en' }),
+      });
+      setMessages(prev => [...prev, data.message]);
+    } catch (e) {
+      console.error('Template send failed:', e);
+    }
+  }
+
+  const filtered = conversations.filter(c =>
+    !search || (c.contactName || '').toLowerCase().includes(search.toLowerCase()) || (c.contactPhone || '').includes(search)
+  );
+
+  return (
+    <div className="flex h-screen bg-slate-50">
+      <Sidebar />
+
+      {/* Conversation list */}
+      <div className="w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col">
+        {/* Header */}
+        <div className="px-4 py-4 border-b border-slate-100">
+          <h2 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-sky-600" />
+            Inbox
+          </h2>
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search contacts…"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+          </div>
+        </div>
+
+        {/* Conversations */}
+        <div className="flex-1 overflow-y-auto">
+          {loading && <p className="p-4 text-center text-sm text-slate-400">Loading…</p>}
+          {!loading && filtered.length === 0 && (
+            <div className="p-8 text-center">
+              <MessageSquare className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm text-slate-400">No conversations yet</p>
+              <p className="text-xs text-slate-400 mt-1">Messages will appear here when WhatsApp is connected</p>
+            </div>
+          )}
+          {filtered.map(conv => {
+            const unread = Number(conv.unreadCount || 0);
+            const isSelected = selectedConv?.contactId === conv.contactId;
+            return (
+              <button
+                key={conv.contactId}
+                onClick={() => loadMessages(conv)}
+                className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-slate-50 transition-colors ${
+                  isSelected ? 'bg-sky-50 border-l-2 border-l-sky-600' : 'hover:bg-slate-50'
+                }`}
+              >
+                <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-sm flex-shrink-0">
+                  {(conv.contactName || '?')[0].toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <p className={`text-sm truncate ${unread > 0 ? 'font-bold text-slate-900' : 'font-medium text-slate-800'}`}>
+                      {conv.contactName || conv.contactPhone || 'Unknown'}
+                    </p>
+                    <p className="text-xs text-slate-400 flex-shrink-0 ml-2">{timeAgo(conv.lastMessageAt)}</p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className={`text-xs truncate ${unread > 0 ? 'text-slate-700' : 'text-slate-400'}`}>
+                      {conv.lastDirection === 'outbound' && '→ '}
+                      {(conv.lastMessage || '').slice(0, 35)}
+                    </p>
+                    {unread > 0 && (
+                      <span className="ml-2 flex-shrink-0 bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+                        {unread > 9 ? '9+' : unread}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Chat view */}
+      <div className="flex-1 flex flex-col">
+        {!selectedConv ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <MessageSquare className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-500 font-medium">Select a conversation</p>
+              <p className="text-slate-400 text-sm mt-1">Choose a contact to see your WhatsApp messages</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Chat header */}
+            <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4">
+              <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-sm">
+                {(selectedConv.contactName || '?')[0].toUpperCase()}
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-slate-900">{selectedConv.contactName || 'Unknown'}</p>
+                <p className="text-xs text-slate-400 flex items-center gap-1">
+                  <Phone className="w-3 h-3" />
+                  {selectedConv.contactPhone || '—'}
+                </p>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 bg-slate-50">
+              {msgLoading && <p className="text-center text-sm text-slate-400 py-8">Loading messages…</p>}
+              {!msgLoading && messages.length === 0 && (
+                <p className="text-center text-sm text-slate-400 py-8">No messages yet. Send the first message!</p>
+              )}
+              {messages.map(msg => (
+                <MessageBubble key={msg.id} msg={msg} />
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Composer */}
+            <div className="bg-white border-t border-slate-200 px-4 py-3">
+              <div className="flex items-center gap-2">
+                {/* Template button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowTemplates(s => !s)}
+                    className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors text-xs font-medium"
+                    title="Send Template"
+                  >
+                    Templates
+                  </button>
+                  {showTemplates && (
+                    <TemplateSelector
+                      templates={templates}
+                      onSelect={sendTemplate}
+                      onClose={() => setShowTemplates(false)}
+                    />
+                  )}
+                </div>
+
+                {/* Text input */}
+                <input
+                  value={newMsg}
+                  onChange={e => setNewMsg(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                  placeholder="Type a message…"
+                  className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+
+                <button
+                  onClick={sendMessage}
+                  disabled={sending || !newMsg.trim()}
+                  className="p-2.5 bg-sky-600 text-white rounded-xl hover:bg-sky-700 disabled:opacity-50 transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

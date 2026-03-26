@@ -43,4 +43,6 @@ export {
   invoiceLineItems,
   payments,
   invoiceSeries,
+  socialAccounts,
+  socialPosts,
 } from './schema';
