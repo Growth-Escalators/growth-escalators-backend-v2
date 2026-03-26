@@ -3,7 +3,6 @@ import { eq } from 'drizzle-orm';
 import { db, tenants, deals, contacts, processedEvents, events } from '../db/index';
 import { findOrCreateContact } from '../services/contactService';
 import { sendPurchaseEvent } from '../services/metaCapi';
-import { sendSlackMessage } from '../services/slackService';
 
 const router = Router();
 
@@ -210,11 +209,6 @@ router.post('/webhook', async (req: Request, res: Response) => {
       }).catch(e => console.error('[cashfree] WhatsApp template error:', e));
     }
 
-    // Post to #sales-bd Slack
-    sendSlackMessage('sales-bd',
-      `💰 *New SLO sale!* ${name} bought ${productLabel} for ₹${amount}. Segment: ${segment}`
-    ).catch(() => {});
-
     // Log event
     await db.insert(events).values({
       tenantId: tenant.id, contactId: contact.id, eventType: 'slo_purchase',
@@ -240,10 +234,91 @@ router.get('/webhook-test', (_req: Request, res: Response) => {
     status: 'active',
     handler: 'POST /api/cashfree/webhook',
     events_handled: ['PAYMENT_SUCCESS_WEBHOOK'],
-    actions: ['create_contact', 'tag_segment', 'create_deal', 'fire_capi_purchase', 'send_whatsapp_template', 'post_slack_sales_bd', 'log_event'],
+    actions: ['create_contact', 'tag_segment', 'create_deal', 'fire_capi_purchase', 'send_whatsapp_template', 'log_event'],
     cashfree_env: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
     has_cashfree_creds: !!(process.env.CASHFREE_APP_ID && process.env.CASHFREE_SECRET_KEY),
   });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/cashfree/order/:orderId — order details for thank you page
+// ---------------------------------------------------------------------------
+router.get('/order/:orderId', async (req: Request, res: Response) => {
+  const orderId = req.params.orderId as string;
+  if (!orderId) { res.status(400).json({ error: 'orderId required' }); return; }
+
+  try {
+    const cfRes = await fetch(`${CASHFREE_BASE}/orders/${orderId}`, {
+      headers: {
+        'x-client-id': process.env.CASHFREE_APP_ID ?? '',
+        'x-client-secret': process.env.CASHFREE_SECRET_KEY ?? '',
+        'x-api-version': '2023-08-01',
+      },
+    });
+    const data = await cfRes.json() as Record<string, unknown>;
+    res.json({
+      orderId: data.order_id,
+      amount: data.order_amount,
+      status: data.order_status,
+      meta: data.order_meta,
+      customer: data.customer_details,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/cashfree/upsell — create upsell order for a bump
+// ---------------------------------------------------------------------------
+router.post('/upsell', async (req: Request, res: Response) => {
+  const { orderId, bumpId, email, phone, name } = req.body as {
+    orderId?: string; bumpId?: number; email?: string; phone?: string; name?: string;
+  };
+
+  if (!bumpId || !email || !phone) {
+    res.status(400).json({ error: 'bumpId, email, phone required' });
+    return;
+  }
+
+  const amount = bumpId === 1 ? 199 : bumpId === 2 ? 499 : 0;
+  if (amount === 0) { res.status(400).json({ error: 'invalid bumpId' }); return; }
+
+  const upsellOrderId = `GE_UP_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+  try {
+    const cfRes = await fetch(`${CASHFREE_BASE}/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-id': process.env.CASHFREE_APP_ID ?? '',
+        'x-client-secret': process.env.CASHFREE_SECRET_KEY ?? '',
+        'x-api-version': '2023-08-01',
+      },
+      body: JSON.stringify({
+        order_id: upsellOrderId,
+        order_amount: amount,
+        order_currency: 'INR',
+        customer_details: {
+          customer_id: phone,
+          customer_name: name || 'Customer',
+          customer_email: email,
+          customer_phone: phone,
+        },
+        order_meta: { upsell: true, bumpId, originalOrderId: orderId },
+      }),
+    });
+
+    if (!cfRes.ok) {
+      const errBody = await cfRes.json() as { message?: string };
+      throw new Error(errBody.message ?? 'Upsell order creation failed');
+    }
+
+    const cfData = await cfRes.json() as { payment_session_id: string };
+    res.json({ payment_session_id: cfData.payment_session_id, order_id: upsellOrderId, amount });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 export default router;

@@ -37,7 +37,6 @@ export const SLACK_IDS = {
 export const SLACK_CHANNELS = {
   sodEod: 'sod-eod',
   general: 'C07489V0RB2',
-  salesBd: 'sales-bd',
   performanceMarketing: 'performance-marketing',
 };
 

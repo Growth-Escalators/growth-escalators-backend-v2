@@ -3,7 +3,7 @@ import { db, socialAccounts, socialPosts, userPermissions } from '../db/index';
 import { eq, and, lte, gte, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import multer from 'multer';
-import { uploadToR2 } from '../utils/r2';
+import { uploadToR2, deleteFromR2, listR2Objects } from '../utils/r2';
 
 const router = Router();
 
@@ -366,6 +366,174 @@ router.get('/calendar', async (req: Request, res: Response) => {
     res.json({ posts: rows });
   } catch (e: unknown) {
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/social/library — list all files in R2 bucket
+// ---------------------------------------------------------------------------
+router.get('/library', async (req: Request, res: Response) => {
+  try {
+    const typeFilter = (req.query.type as string) || 'all';
+    const searchQuery = (req.query.search as string || '').toLowerCase();
+
+    let files = await listR2Objects();
+
+    if (typeFilter === 'images') {
+      files = files.filter(f => f.mimeType.startsWith('image/'));
+    } else if (typeFilter === 'videos') {
+      files = files.filter(f => f.mimeType.startsWith('video/'));
+    }
+
+    if (searchQuery) {
+      files = files.filter(f => f.key.toLowerCase().includes(searchQuery));
+    }
+
+    res.json({ files });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/social/library/:key — delete file from R2
+// ---------------------------------------------------------------------------
+router.delete('/library/:key', async (req: Request, res: Response) => {
+  const key = decodeURIComponent(req.params.key as string);
+  try {
+    await deleteFromR2(key);
+    res.json({ success: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Facebook OAuth routes
+// ---------------------------------------------------------------------------
+
+// GET /api/social/oauth/facebook/start
+router.get('/oauth/facebook/start', async (req: Request, res: Response) => {
+  const appId = process.env.META_APP_ID;
+  if (!appId) { res.status(503).json({ error: 'META_APP_ID not configured' }); return; }
+
+  const redirectUri = 'https://web-production-311da.up.railway.app/api/social/oauth/facebook/callback';
+  const scope = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management';
+  const state = Buffer.from(JSON.stringify({ userId: req.user?.id, ts: Date.now() })).toString('base64url');
+
+  const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}&response_type=code`;
+  res.redirect(oauthUrl);
+});
+
+// GET /api/social/oauth/facebook/callback
+router.get('/oauth/facebook/callback', async (req: Request, res: Response) => {
+  const code = req.query.code as string;
+  const state = req.query.state as string;
+
+  if (!code) { res.redirect('/crm/social?error=no_code'); return; }
+
+  try {
+    // Decode state
+    let userId: string | null = null;
+    if (state) {
+      const parsed = JSON.parse(Buffer.from(state, 'base64url').toString()) as { userId?: string };
+      userId = parsed.userId || null;
+    }
+
+    const appId = process.env.META_APP_ID;
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appId || !appSecret) { res.redirect('/crm/social?error=config'); return; }
+
+    const redirectUri = 'https://web-production-311da.up.railway.app/api/social/oauth/facebook/callback';
+
+    // Exchange code for short-lived token
+    const tokenRes = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}`);
+    const tokenData = await tokenRes.json() as { access_token?: string; error?: Record<string, string> };
+    if (!tokenData.access_token) { res.redirect('/crm/social?error=token_exchange'); return; }
+
+    // Exchange for long-lived token
+    const llRes = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${tokenData.access_token}`);
+    const llData = await llRes.json() as { access_token?: string };
+    const longLivedToken = llData.access_token || tokenData.access_token;
+
+    // Fetch pages
+    const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedToken}`);
+    const pagesData = await pagesRes.json() as { data?: Array<{ id: string; name: string; access_token: string }> };
+    const pages = pagesData.data || [];
+
+    // Get tenant ID from first user with this ID
+    let tenantId: string | null = null;
+    if (userId) {
+      const userResult = await db.execute(sql`SELECT tenant_id FROM users WHERE id = ${userId} LIMIT 1`);
+      tenantId = (userResult.rows[0] as Record<string,string> | undefined)?.tenant_id || null;
+    }
+    if (!tenantId) {
+      const tenantResult = await db.execute(sql`SELECT id FROM tenants WHERE slug = 'growth-escalators' LIMIT 1`);
+      tenantId = (tenantResult.rows[0] as Record<string,string> | undefined)?.id || null;
+    }
+    if (!tenantId) { res.redirect('/crm/social?error=no_tenant'); return; }
+
+    let pagesConnected = 0;
+
+    for (const page of pages) {
+      const encToken = encrypt(page.access_token);
+
+      // Upsert Facebook page
+      const existing = await db.select().from(socialAccounts)
+        .where(and(eq(socialAccounts.accountId, page.id), eq(socialAccounts.platform, 'facebook')))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db.update(socialAccounts)
+          .set({ accessToken: encToken, accountName: page.name, isActive: true })
+          .where(eq(socialAccounts.id, existing[0].id));
+      } else {
+        await db.insert(socialAccounts).values({
+          tenantId,
+          platform: 'facebook',
+          accountId: page.id,
+          accountName: page.name,
+          accessToken: encToken,
+          isActive: true,
+        });
+      }
+      pagesConnected++;
+
+      // Check for linked Instagram account
+      const igRes = await fetch(`https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`);
+      const igData = await igRes.json() as { instagram_business_account?: { id: string } };
+      const igId = igData.instagram_business_account?.id;
+
+      if (igId) {
+        const igInfoRes = await fetch(`https://graph.facebook.com/v19.0/${igId}?fields=username,profile_picture_url&access_token=${page.access_token}`);
+        const igInfo = await igInfoRes.json() as Record<string, string>;
+
+        const existingIg = await db.select().from(socialAccounts)
+          .where(and(eq(socialAccounts.accountId, igId), eq(socialAccounts.platform, 'instagram')))
+          .limit(1);
+
+        if (existingIg.length > 0) {
+          await db.update(socialAccounts)
+            .set({ accessToken: encToken, accountName: igInfo.username || `IG:${igId}`, isActive: true, thumbnailUrl: igInfo.profile_picture_url || null })
+            .where(eq(socialAccounts.id, existingIg[0].id));
+        } else {
+          await db.insert(socialAccounts).values({
+            tenantId,
+            platform: 'instagram',
+            accountId: igId,
+            accountName: igInfo.username || `IG:${igId}`,
+            accessToken: encToken,
+            thumbnailUrl: igInfo.profile_picture_url || null,
+            isActive: true,
+          });
+        }
+      }
+    }
+
+    res.redirect(`/crm/social?connected=true&pages=${pagesConnected}`);
+  } catch (e) {
+    console.error('[social oauth] callback error:', e);
+    res.redirect('/crm/social?error=callback_failed');
   }
 });
 

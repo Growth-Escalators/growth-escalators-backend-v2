@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import { apiFetch } from '../lib/api.js';
-import { MessageSquare, Send, Search, Check, CheckCheck, Image, FileText, Phone, User } from 'lucide-react';
+import { MessageSquare, Send, Search, Check, CheckCheck, Image, FileText, Phone, User, ArrowLeft } from 'lucide-react';
 import { io } from 'socket.io-client';
 
 function timeAgo(isoDate) {
@@ -214,8 +214,8 @@ export default function InboxPage() {
     <div className="flex h-screen bg-slate-50">
       <Sidebar />
 
-      {/* Conversation list */}
-      <div className="w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col">
+      {/* Conversation list — hidden on mobile when chat is open */}
+      <div className={`w-full md:w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col ${selectedConv ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}
         <div className="px-4 py-4 border-b border-slate-100">
           <h2 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
@@ -282,8 +282,8 @@ export default function InboxPage() {
         </div>
       </div>
 
-      {/* Chat view */}
-      <div className="flex-1 flex flex-col">
+      {/* Chat view — hidden on mobile when no chat selected */}
+      <div className={`flex-1 flex flex-col ${!selectedConv ? 'hidden md:flex' : 'flex'}`}>
         {!selectedConv ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
@@ -295,7 +295,10 @@ export default function InboxPage() {
         ) : (
           <>
             {/* Chat header */}
-            <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4">
+            <div className="bg-white border-b border-slate-200 px-4 md:px-6 py-3 flex items-center gap-3 md:gap-4">
+              <button onClick={() => setSelectedConv(null)} className="md:hidden p-1 text-slate-500 hover:text-slate-700">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
               <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-sm">
                 {(selectedConv.contactName || '?')[0].toUpperCase()}
               </div>

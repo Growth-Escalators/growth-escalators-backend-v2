@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import { apiFetch } from '../lib/api.js';
-import { Share2, Globe, Camera, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { Share2, Globe, Camera, Plus, Trash2, AlertCircle, Image, Film, Search, ExternalLink } from 'lucide-react';
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -323,6 +323,95 @@ function CalendarTab() {
   );
 }
 
+// Library tab
+function LibraryTab({ onUseInPost }) {
+  const [files, setFiles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (filter !== 'all') params.set('type', filter);
+    if (search) params.set('search', search);
+    apiFetch(`/api/social/library?${params.toString()}`)
+      .then(d => setFiles(d?.files || []))
+      .catch(() => setFiles([]))
+      .finally(() => setLoading(false));
+  }, [filter, search]);
+
+  async function handleDelete(key) {
+    if (!confirm('Delete this file permanently?')) return;
+    try {
+      await apiFetch(`/api/social/library/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      setFiles(prev => prev.filter(f => f.key !== key));
+    } catch {}
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="flex bg-slate-100 rounded-lg p-1">
+          {[['all','All'],['images','Images'],['videos','Videos']].map(([v,l]) => (
+            <button key={v} onClick={() => setFilter(v)}
+              className={`px-3 py-1 rounded-md text-xs font-medium ${filter === v ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>{l}</button>
+          ))}
+        </div>
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-2 w-4 h-4 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search files…"
+            className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" />
+        </div>
+      </div>
+
+      {loading && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {[1,2,3,4,5,6].map(i => <div key={i} className="h-32 bg-slate-100 rounded-xl animate-pulse" />)}
+        </div>
+      )}
+
+      {!loading && files.length === 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+          <Image className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500 text-sm">No media uploaded yet.</p>
+          <p className="text-slate-400 text-xs mt-1">Upload images and videos from the Compose tab.</p>
+        </div>
+      )}
+
+      {!loading && files.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {files.map(f => (
+            <div key={f.key} className="group relative bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
+              {f.mimeType.startsWith('image/') ? (
+                <img src={f.url} alt={f.key} className="w-full h-28 object-cover" />
+              ) : (
+                <div className="w-full h-28 bg-slate-100 flex items-center justify-center">
+                  <Film className="w-8 h-8 text-slate-400" />
+                </div>
+              )}
+              <div className="p-2">
+                <p className="text-xs text-slate-700 truncate">{f.key.split('/').pop()}</p>
+                <p className="text-xs text-slate-400">{formatSize(f.size)}</p>
+              </div>
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <button onClick={() => onUseInPost(f.url)} className="px-2 py-1 bg-sky-600 text-white rounded text-xs font-medium">Use</button>
+                <button onClick={() => handleDelete(f.key)} className="px-2 py-1 bg-red-600 text-white rounded text-xs font-medium">Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Accounts tab
 function AccountsTab({ accounts, onDelete, onAdd }) {
   const [showModal, setShowModal] = useState(false);
@@ -337,13 +426,18 @@ function AccountsTab({ accounts, onDelete, onAdd }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-3">
+        <a href="/api/social/oauth/facebook/start"
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+          <Globe className="w-4 h-4" />
+          Connect with Facebook
+        </a>
         <button
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm hover:bg-sky-700"
+          className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200"
         >
           <Plus className="w-4 h-4" />
-          Connect Facebook Page
+          Manual Connect
         </button>
       </div>
 
@@ -351,7 +445,7 @@ function AccountsTab({ accounts, onDelete, onAdd }) {
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
           <Share2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-500 text-sm">No social accounts connected yet.</p>
-          <p className="text-slate-400 text-xs mt-1">Click "Connect Facebook Page" to get started.</p>
+          <p className="text-slate-400 text-xs mt-1">Click "Connect with Facebook" to get started via OAuth.</p>
         </div>
       )}
 
@@ -407,8 +501,20 @@ export default function SocialPage() {
   const TABS = [
     { id: 'compose', label: 'Compose' },
     { id: 'calendar', label: 'Calendar' },
+    { id: 'library', label: 'Library' },
     { id: 'accounts', label: 'Accounts' },
   ];
+
+  // Check for OAuth callback params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connected') === 'true') {
+      const pages = params.get('pages') || '0';
+      alert(`${pages} page(s) connected successfully!`);
+      window.history.replaceState({}, '', '/crm/social');
+      setRefreshKey(k => k + 1);
+    }
+  }, []);
 
   return (
     <div className="flex h-screen bg-slate-50">
@@ -440,6 +546,7 @@ export default function SocialPage() {
         <div className="p-6">
           {tab === 'compose' && <ComposeTab accounts={accounts} onPost={() => setRefreshKey(k => k+1)} />}
           {tab === 'calendar' && <CalendarTab />}
+          {tab === 'library' && <LibraryTab onUseInPost={(url) => { setTab('compose'); /* media URL will be passed via state */ }} />}
           {tab === 'accounts' && <AccountsTab accounts={accounts} onDelete={deleteAccount} onAdd={() => setRefreshKey(k => k+1)} />}
         </div>
       </main>
