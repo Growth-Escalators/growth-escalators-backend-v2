@@ -1,6 +1,6 @@
 import { db, marketingAccounts } from '../db/index';
-import { eq, and, sql } from 'drizzle-orm';
-import { sendSlackDM, SLACK_MEMBERS } from './slackService';
+import { eq, sql } from 'drizzle-orm';
+import { sendSlackDM } from './slackService';
 import { SLACK_IDS } from '../utils/clickupSlack';
 import { logAuditEvent } from '../utils/audit';
 
@@ -36,8 +36,8 @@ export async function checkSpendAlerts(): Promise<{ checked: number; alerted: nu
         if (hoursSinceAlert < ALERT_COOLDOWN_HOURS) continue;
       }
 
-      // Fetch account balance from Meta
-      const url = `${META_API_BASE}/${acct.accountId}?fields=balance,amount_spent,spend_cap&access_token=${token}`;
+      // Fetch account balance + daily_budget from Meta
+      const url = `${META_API_BASE}/${acct.accountId}?fields=balance,daily_budget,name,currency&access_token=${token}`;
       const res = await fetch(url);
       const data = await res.json() as Record<string, unknown>;
 
@@ -46,21 +46,17 @@ export async function checkSpendAlerts(): Promise<{ checked: number; alerted: nu
         continue;
       }
 
-      // Balance and spend_cap are in account currency cents
+      // Meta returns balance and daily_budget in account currency cents
       const balance = Number(data.balance || 0) / 100;
-      const spendCap = Number(data.spend_cap || 0) / 100;
-      const amountSpent = Number(data.amount_spent || 0) / 100;
-      const remaining = spendCap > 0 ? spendCap - amountSpent : balance;
+      const dailyBudget = Number(data.daily_budget || 0) / 100;
 
-      // Alert if remaining balance is low (< ₹5000 or < 20% of spend cap)
-      const threshold = spendCap > 0 ? spendCap * 0.2 : 5000;
-      if (remaining > threshold) continue;
+      // Alert when balance < daily_budget
+      if (dailyBudget <= 0 || balance >= dailyBudget) continue;
 
       const msg = `⚠️ *Low Balance Alert — ${acct.accountName}*\n\n` +
-        `Current balance: ₹${remaining.toLocaleString('en-IN', { maximumFractionDigits: 0 })}\n` +
-        `Total spent: ₹${amountSpent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}\n` +
-        (spendCap > 0 ? `Spend cap: ₹${spendCap.toLocaleString('en-IN', { maximumFractionDigits: 0 })}\n` : '') +
-        `\nBalance is low. Campaigns may pause soon.\n` +
+        `Current balance: ₹${balance.toLocaleString('en-IN', { maximumFractionDigits: 0 })}\n` +
+        `Daily budget: ₹${dailyBudget.toLocaleString('en-IN', { maximumFractionDigits: 0 })}\n` +
+        `Balance is below daily budget — campaigns may pause soon.\n` +
         `Top up at: business.facebook.com/ads/manager`;
 
       // DM Vishal + Jatin
@@ -76,7 +72,7 @@ export async function checkSpendAlerts(): Promise<{ checked: number; alerted: nu
       const tenantId = await getTenantId();
       if (tenantId) {
         await logAuditEvent(null, tenantId, 'SPEND_ALERT', 'ad_account', acct.id, {
-          accountName: acct.accountName, remaining, amountSpent,
+          accountName: acct.accountName, balance, dailyBudget,
         });
       }
 

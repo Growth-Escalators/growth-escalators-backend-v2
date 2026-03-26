@@ -269,7 +269,7 @@ export default function AdsPage() {
           )}
 
           {/* Metrics row */}
-          <div className="grid grid-cols-6 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
             <MetricCard label="Total Spend" value={`₹${totalSpend.toLocaleString('en-IN', {maximumFractionDigits: 0})}`} />
             <MetricCard label="Purchases" value={totalPurchases.toLocaleString('en-IN')} />
             <MetricCard label="ROAS" value={`${avgRoas.toFixed(2)}x`} />

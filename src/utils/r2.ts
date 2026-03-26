@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
 
 let _client: S3Client | null = null;
@@ -47,4 +47,38 @@ export async function deleteFromR2(filename: string): Promise<void> {
   if (!client) return;
   const bucket = process.env.R2_BUCKET_NAME || 'ge-media';
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: filename }));
+}
+
+export interface R2Object {
+  key: string;
+  url: string;
+  size: number;
+  lastModified: string;
+  mimeType: string;
+}
+
+function inferMimeType(key: string): string {
+  const ext = (key.split('.').pop() || '').toLowerCase();
+  const map: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+    webp: 'image/webp', svg: 'image/svg+xml', mp4: 'video/mp4', mov: 'video/quicktime',
+    pdf: 'application/pdf',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
+export async function listR2Objects(): Promise<R2Object[]> {
+  const client = getClient();
+  if (!client) return [];
+  const bucket = process.env.R2_BUCKET_NAME || 'ge-media';
+  const publicUrl = process.env.R2_PUBLIC_URL || `https://${bucket}.r2.dev`;
+
+  const result = await client.send(new ListObjectsV2Command({ Bucket: bucket, MaxKeys: 500 }));
+  return (result.Contents || []).map(obj => ({
+    key: obj.Key || '',
+    url: `${publicUrl}/${obj.Key}`,
+    size: obj.Size || 0,
+    lastModified: obj.LastModified?.toISOString() || '',
+    mimeType: inferMimeType(obj.Key || ''),
+  }));
 }

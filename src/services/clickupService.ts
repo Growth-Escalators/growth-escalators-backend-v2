@@ -1,6 +1,5 @@
 import https from 'https';
-import { sendSlackMessage } from './slackService';
-import { CLICKUP_IDS, SLACK_CHANNELS } from '../utils/clickupSlack';
+import { CLICKUP_IDS } from '../utils/clickupSlack';
 
 const CLICKUP_TOKEN = process.env.CLICKUP_API_TOKEN;
 const CLICKUP_LIST_ID = process.env.CLICKUP_LIST_ID;
@@ -145,11 +144,6 @@ export async function createOnboardingTask(params: {
     status: 'to do',
   });
 
-  // Post to #sales-bd
-  sendSlackMessage(SLACK_CHANNELS.salesBd,
-    `🎉 *Deal Won!* ${params.contactName} — Onboarding task created and assigned to Sanskriti + Jatin`
-  ).catch(() => {});
-
   return result;
 }
 
@@ -177,10 +171,6 @@ export async function createFollowUpTask(params: {
     status: 'to do',
   });
 
-  sendSlackMessage(SLACK_CHANNELS.salesBd,
-    `📤 *Proposal sent* to ${params.contactName} — Follow-up task created for Sakcham`
-  ).catch(() => {});
-
   return result;
 }
 
@@ -206,10 +196,6 @@ export async function createLostDealAnalysisTask(params: {
     dueDate: daysFromNow(7),
     status: 'to do',
   });
-
-  sendSlackMessage(SLACK_CHANNELS.salesBd,
-    `📉 *Deal Lost* — ${params.contactName}. Reason: ${params.lostReason}. Analysis task created for Jatin.`
-  ).catch(() => {});
 
   return result;
 }
@@ -250,13 +236,6 @@ export async function createCallPrepTask(params: {
     status: 'to do',
   });
 
-  const assigneeName = isHot ? 'Jatin' : 'Sakcham';
-  const emoji = isHot ? '🔥' : '📞';
-  const label = isHot ? 'HOT LEAD' : 'Warm lead';
-  sendSlackMessage(SLACK_CHANNELS.salesBd,
-    `${emoji} *${label} booked* — ${params.contactName} scored ${params.score}/100. Call prep task created for ${assigneeName}. Call at ${callTime}`
-  ).catch(() => {});
-
   return result;
 }
 
@@ -283,10 +262,6 @@ export async function createInitialOutreachTask(params: {
     dueDate: daysFromNow(1),
     status: 'to do',
   });
-
-  sendSlackMessage(SLACK_CHANNELS.salesBd,
-    `👤 *New contact:* ${params.contactName} from ${params.source || 'Direct'}. Outreach task created for Sakcham.`
-  ).catch(() => {});
 
   return result;
 }
