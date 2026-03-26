@@ -1,0 +1,284 @@
+import { Router, type Request, type Response } from 'express';
+
+const router = Router();
+
+const META_API_BASE = 'https://graph.facebook.com/v19.0';
+
+const AD_ACCOUNTS = [
+  { id: 'act_323237510625803', name: 'GE Agency' },
+  { id: 'act_689363376592426', name: 'Paraiso' },
+];
+
+function getToken(): string | null {
+  return process.env.META_ADS_TOKEN || process.env.META_ACCESS_TOKEN || null;
+}
+
+function dateRangeToParams(range: string): Record<string, string> {
+  const today = new Date();
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+
+  const since = new Date(today);
+  const until = new Date(today);
+
+  switch (range) {
+    case 'today':
+      return { time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }) };
+    case 'last_7d':
+      since.setDate(today.getDate() - 7);
+      return { time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }) };
+    case 'last_14d':
+      since.setDate(today.getDate() - 14);
+      return { time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }) };
+    case 'last_30d':
+      since.setDate(today.getDate() - 30);
+      return { time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }) };
+    case 'this_month': {
+      since.setDate(1);
+      return { time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }) };
+    }
+    case 'last_month': {
+      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const last = new Date(today.getFullYear(), today.getMonth(), 0);
+      return { time_range: JSON.stringify({ since: fmt(first), until: fmt(last) }) };
+    }
+    default:
+      since.setDate(today.getDate() - 7);
+      return { time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }) };
+  }
+}
+
+function parseInsightRow(row: Record<string, unknown>) {
+  const actions = (row.actions as Array<{ action_type: string; value: string }>) || [];
+  const actionValues = (row.action_values as Array<{ action_type: string; value: string }>) || [];
+
+  const purchases = actions
+    .filter(a => a.action_type === 'offsite_conversion.fb_pixel_purchase')
+    .reduce((sum, a) => sum + Number(a.value || 0), 0);
+
+  const purchaseValue = actionValues
+    .filter(a => a.action_type === 'offsite_conversion.fb_pixel_purchase')
+    .reduce((sum, a) => sum + Number(a.value || 0), 0);
+
+  const spend = Number(row.spend || 0);
+  const impressions = Number(row.impressions || 0);
+  const clicks = Number(row.clicks || 0);
+
+  const roas = spend > 0 ? purchaseValue / spend : 0;
+  const costPerPurchase = purchases > 0 ? spend / purchases : 0;
+  const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+  const cpc = clicks > 0 ? spend / clicks : 0;
+  const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
+
+  return {
+    campaignId: row.campaign_id,
+    campaignName: row.campaign_name,
+    adsetId: row.adset_id,
+    adsetName: row.adset_name,
+    adId: row.ad_id,
+    adName: row.ad_name,
+    spend: Math.round(spend * 100) / 100,
+    impressions,
+    clicks,
+    purchases,
+    purchaseValue: Math.round(purchaseValue * 100) / 100,
+    roas: Math.round(roas * 100) / 100,
+    costPerPurchase: Math.round(costPerPurchase * 100) / 100,
+    ctr: Math.round(ctr * 100) / 100,
+    cpc: Math.round(cpc * 100) / 100,
+    cpm: Math.round(cpm * 100) / 100,
+    dateStart: row.date_start,
+    dateStop: row.date_stop,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/ads/accounts
+// ---------------------------------------------------------------------------
+router.get('/accounts', async (_req: Request, res: Response) => {
+  const token = getToken();
+  if (!token) {
+    res.json({ accounts: [], error: 'token_missing' });
+    return;
+  }
+
+  try {
+    const results = await Promise.all(
+      AD_ACCOUNTS.map(async (acct) => {
+        const url = `${META_API_BASE}/${acct.id}?fields=name,currency,account_status,spend_cap&access_token=${token}`;
+        const r = await fetch(url);
+        const data = await r.json() as Record<string, unknown>;
+        return {
+          id: acct.id,
+          name: (data.name as string) || acct.name,
+          currency: data.currency || 'INR',
+          status: data.account_status === 1 ? 'ACTIVE' : 'PAUSED',
+          error: data.error ? (data.error as Record<string,string>).message : null,
+        };
+      })
+    );
+    res.json({ accounts: results });
+  } catch (e: unknown) {
+    res.status(500).json({ accounts: [], error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/ads/campaigns?accountId=act_xxx&dateRange=last_7d
+// ---------------------------------------------------------------------------
+router.get('/campaigns', async (req: Request, res: Response) => {
+  const token = getToken();
+  if (!token) { res.json({ campaigns: [], error: 'token_missing' }); return; }
+
+  const accountId = req.query.accountId as string;
+  const dateRange = (req.query.dateRange as string) || 'last_7d';
+  if (!accountId) { res.status(400).json({ error: 'accountId required' }); return; }
+
+  try {
+    const url = `${META_API_BASE}/${accountId}/campaigns?fields=id,name,status,effective_status,objective&limit=100&access_token=${token}`;
+    const r = await fetch(url);
+    const data = await r.json() as Record<string, unknown>;
+    if ((data as Record<string,unknown>).error) {
+      res.json({ campaigns: [], error: ((data as Record<string,Record<string,string>>).error).message });
+      return;
+    }
+    res.json({ campaigns: (data as { data: unknown[] }).data || [] });
+  } catch (e: unknown) {
+    res.status(500).json({ campaigns: [], error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/ads/insights?accountId=act_xxx&dateRange=last_7d&level=campaign
+// ---------------------------------------------------------------------------
+router.get('/insights', async (req: Request, res: Response) => {
+  const token = getToken();
+  if (!token) { res.json({ insights: [], error: 'token_missing' }); return; }
+
+  const accountId = req.query.accountId as string;
+  const dateRange = (req.query.dateRange as string) || 'last_7d';
+  const level = (req.query.level as string) || 'campaign';
+  if (!accountId) { res.status(400).json({ error: 'accountId required' }); return; }
+
+  try {
+    const timeParams = dateRangeToParams(dateRange);
+    const fields = [
+      'campaign_id', 'campaign_name', 'adset_id', 'adset_name',
+      'ad_id', 'ad_name', 'spend', 'impressions', 'clicks',
+      'ctr', 'cpm', 'cpc', 'actions', 'action_values',
+    ].join(',');
+
+    const params = new URLSearchParams({
+      fields,
+      level,
+      time_range: timeParams.time_range,
+      limit: '200',
+      access_token: token,
+    });
+
+    const url = `${META_API_BASE}/${accountId}/insights?${params.toString()}`;
+    const r = await fetch(url);
+    const data = await r.json() as Record<string, unknown>;
+
+    if ((data as Record<string,unknown>).error) {
+      res.json({ insights: [], error: ((data as Record<string,Record<string,string>>).error).message });
+      return;
+    }
+
+    const rows = ((data as { data: Array<Record<string,unknown>> }).data || []).map(parseInsightRow);
+    res.json({ insights: rows });
+  } catch (e: unknown) {
+    res.status(500).json({ insights: [], error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/ads/adsets?accountId=act_xxx&campaignId=xxx&dateRange=last_7d
+// ---------------------------------------------------------------------------
+router.get('/adsets', async (req: Request, res: Response) => {
+  const token = getToken();
+  if (!token) { res.json({ insights: [], error: 'token_missing' }); return; }
+
+  const accountId = req.query.accountId as string;
+  const campaignId = req.query.campaignId as string;
+  const dateRange = (req.query.dateRange as string) || 'last_7d';
+  if (!accountId) { res.status(400).json({ error: 'accountId required' }); return; }
+
+  try {
+    const timeParams = dateRangeToParams(dateRange);
+    const fields = [
+      'campaign_id', 'campaign_name', 'adset_id', 'adset_name',
+      'spend', 'impressions', 'clicks', 'ctr', 'cpm', 'cpc',
+      'actions', 'action_values',
+    ].join(',');
+
+    const params = new URLSearchParams({
+      fields,
+      level: 'adset',
+      time_range: timeParams.time_range,
+      limit: '200',
+      access_token: token,
+    });
+    if (campaignId) params.set('filtering', JSON.stringify([{ field: 'campaign.id', operator: 'EQUAL', value: campaignId }]));
+
+    const url = `${META_API_BASE}/${accountId}/insights?${params.toString()}`;
+    const r = await fetch(url);
+    const data = await r.json() as Record<string, unknown>;
+
+    if ((data as Record<string,unknown>).error) {
+      res.json({ insights: [], error: ((data as Record<string,Record<string,string>>).error).message });
+      return;
+    }
+
+    const rows = ((data as { data: Array<Record<string,unknown>> }).data || []).map(parseInsightRow);
+    res.json({ insights: rows });
+  } catch (e: unknown) {
+    res.status(500).json({ insights: [], error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/ads/ads?accountId=act_xxx&adsetId=xxx&dateRange=last_7d
+// ---------------------------------------------------------------------------
+router.get('/ads', async (req: Request, res: Response) => {
+  const token = getToken();
+  if (!token) { res.json({ insights: [], error: 'token_missing' }); return; }
+
+  const accountId = req.query.accountId as string;
+  const adsetId = req.query.adsetId as string;
+  const dateRange = (req.query.dateRange as string) || 'last_7d';
+  if (!accountId) { res.status(400).json({ error: 'accountId required' }); return; }
+
+  try {
+    const timeParams = dateRangeToParams(dateRange);
+    const fields = [
+      'campaign_id', 'campaign_name', 'adset_id', 'adset_name',
+      'ad_id', 'ad_name', 'spend', 'impressions', 'clicks',
+      'ctr', 'cpm', 'cpc', 'actions', 'action_values',
+    ].join(',');
+
+    const params = new URLSearchParams({
+      fields,
+      level: 'ad',
+      time_range: timeParams.time_range,
+      limit: '200',
+      access_token: token,
+    });
+    if (adsetId) params.set('filtering', JSON.stringify([{ field: 'adset.id', operator: 'EQUAL', value: adsetId }]));
+
+    const url = `${META_API_BASE}/${accountId}/insights?${params.toString()}`;
+    const r = await fetch(url);
+    const data = await r.json() as Record<string, unknown>;
+
+    if ((data as Record<string,unknown>).error) {
+      res.json({ insights: [], error: ((data as Record<string,Record<string,string>>).error).message });
+      return;
+    }
+
+    const rows = ((data as { data: Array<Record<string,unknown>> }).data || []).map(parseInsightRow);
+    res.json({ insights: rows });
+  } catch (e: unknown) {
+    res.status(500).json({ insights: [], error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+export default router;

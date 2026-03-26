@@ -9,6 +9,10 @@ import SystemHealthPage from './pages/SystemHealthPage.jsx';
 import EmailTemplatesPage from './pages/EmailTemplatesPage.jsx';
 import BillingPage from './pages/BillingPage.jsx';
 import PermissionsPage from './pages/PermissionsPage.jsx';
+import AdsPage from './pages/AdsPage.jsx';
+import ReportsPage from './pages/ReportsPage.jsx';
+import SocialPage from './pages/SocialPage.jsx';
+import InboxPage from './pages/InboxPage.jsx';
 
 function PrivateRoute({ children }) {
   const token = localStorage.getItem('ge_crm_token');
@@ -81,6 +85,38 @@ export default function App() {
           element={
             <PrivateRoute>
               <PermissionsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/ads"
+          element={
+            <PrivateRoute>
+              <AdsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <PrivateRoute>
+              <ReportsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/social"
+          element={
+            <PrivateRoute>
+              <SocialPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/inbox"
+          element={
+            <PrivateRoute>
+              <InboxPage />
             </PrivateRoute>
           }
         />

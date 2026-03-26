@@ -2,7 +2,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import path from 'path';
+import { createServer } from 'http';
 import express, { type Request, type Response, type NextFunction } from 'express';
+import { Server as SocketServer } from 'socket.io';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { db } from './db/index';
 import { sql } from 'drizzle-orm';
@@ -29,12 +31,17 @@ import clickupRouter from './routes/clickup';
 import blockersRouter from './routes/blockers';
 import billingRouter from './routes/billing';
 import permissionsRouter from './routes/permissions';
+import adsRouter from './routes/ads';
+import reportsRouter from './routes/reports';
+import socialRouter from './routes/social';
+import inboxRouter, { setSocketIO } from './routes/inbox';
 import cron from 'node-cron';
 import { checkAndAlertBlockers } from './services/blockerAlertService';
 import { generateMonthlyDraftInvoices } from './services/recurringInvoiceService';
 import { requireAuth } from './middleware/auth';
 import { startStuckJobWorker } from './workers/stuckJobWorker';
 import { startSequenceWorker } from './workers/sequenceWorker';
+import { startSocialPostWorker } from './workers/socialPostWorker';
 
 const app = express();
 
@@ -98,6 +105,10 @@ app.use('/api/clickup', requireAuth, clickupRouter);
 app.use('/api/blockers', requireAuth, blockersRouter);
 app.use('/api/billing', requireAuth, billingRouter);
 app.use('/api/permissions', requireAuth, permissionsRouter);
+app.use('/api/ads', requireAuth, adsRouter);
+app.use('/api/reports', requireAuth, reportsRouter);
+app.use('/api/social', requireAuth, socialRouter);
+app.use('/api/inbox', requireAuth, inboxRouter);
 
 // ---------------------------------------------------------------------------
 // Static frontend — hostname-based routing
@@ -195,7 +206,6 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // Start server (run pending DB migrations first)
 // ---------------------------------------------------------------------------
 const PORT = process.env.PORT ?? 3000;
-
 const migrationsFolder = path.join(__dirname, '..', 'src', 'db', 'migrations');
 
 async function startServer() {
@@ -207,13 +217,40 @@ async function startServer() {
     console.error('[migrate] migration failed — starting anyway:', err);
   }
 
-  app.listen(PORT, () => {
+  // Create HTTP server + Socket.io
+  const httpServer = createServer(app);
+  const io = new SocketServer(httpServer, {
+    cors: { origin: '*', methods: ['GET', 'POST'] },
+    path: '/socket.io',
+  });
+
+  // Inject socket.io into inbox router
+  setSocketIO(io);
+
+  // Socket.io: clients join room by contactId for real-time inbox
+  io.on('connection', (socket) => {
+    console.log('[socket.io] client connected:', socket.id);
+
+    socket.on('join_contact', (contactId: string) => {
+      socket.join(`contact:${contactId}`);
+    });
+
+    socket.on('leave_contact', (contactId: string) => {
+      socket.leave(`contact:${contactId}`);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('[socket.io] client disconnected:', socket.id);
+    });
+  });
+
+  httpServer.listen(PORT, () => {
     console.log(`Growth Escalators backend running on port ${PORT}`);
     startStuckJobWorker();
     startSequenceWorker();
+    startSocialPostWorker();
 
     // Blocker alert cron — every 6 hours
-    // 4:30 AM / 10:30 AM / 4:30 PM / 10:30 PM IST = 23:00 / 05:00 / 11:00 / 17:00 UTC
     cron.schedule('0 23,5,11,17 * * *', async () => {
       console.log('[cron] running blocker alert check…');
       try {

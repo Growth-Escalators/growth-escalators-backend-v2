@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { eq, count, desc } from 'drizzle-orm';
-import { db, processedEvents, jobs } from '../db/index';
+import { eq, count, desc, sql } from 'drizzle-orm';
+import { db, processedEvents, jobs, messages, contacts, contactChannels } from '../db/index';
 import { insertJob } from '../services/jobQueue';
 import { validateMetaWebhook } from '../middleware/validateWebhook';
 import { processBooking } from '../services/bookingService';
+import { emitNewMessage, emitStatusUpdate } from './inbox';
 
 const router = Router();
 
@@ -51,9 +52,23 @@ router.post('/meta-wa', validateMetaWebhook, async (req, res) => {
 
   const value = req.body.entry?.[0]?.changes?.[0]?.value;
 
-  // Status updates (delivered, read, failed) — no messages array
+  // Status updates (delivered, read, failed) — process and return
   if (value?.statuses && !value?.messages) {
-    res.status(200).json({ status: 'ignored', reason: 'status_update' });
+    for (const statusUpdate of value.statuses as Array<Record<string,string>>) {
+      try {
+        const waId = statusUpdate.id;
+        const newStatus = statusUpdate.status;
+        if (!waId || !newStatus) continue;
+        const result = await db.execute(sql`
+          UPDATE messages SET status = ${newStatus}
+          WHERE external_id = ${waId}
+          RETURNING contact_id
+        `);
+        const contactId = (result.rows[0] as Record<string,string> | undefined)?.contact_id;
+        if (contactId) emitStatusUpdate(String(contactId), waId, newStatus);
+      } catch { /* non-critical */ }
+    }
+    res.status(200).json({ status: 'ok', reason: 'status_update' });
     return;
   }
 
@@ -70,6 +85,92 @@ router.post('/meta-wa', validateMetaWebhook, async (req, res) => {
     await markProcessed(eventId, 'meta_wa');
     await insertJob(null, 'inbound_wa', req.body, eventId);
     queued++;
+
+    // Also save directly to messages table for inbox real-time display
+    try {
+      const phone = message.from as string;
+      // Find tenant (look up via WABA or default to first tenant)
+      const tenantResult = await db.execute(sql`SELECT id FROM tenants LIMIT 1`);
+      const tenantId = (tenantResult.rows[0] as { id: string } | undefined)?.id;
+      if (!tenantId) continue;
+
+      // Find contact by WhatsApp channel
+      const channelRows = await db.select().from(contactChannels)
+        .where(eq(contactChannels.channelValue, phone))
+        .limit(1);
+      let contactId: string | null = channelRows[0]?.contactId || null;
+
+      // Create contact if not found
+      if (!contactId) {
+        const [newContact] = await db.insert(contacts).values({
+          tenantId,
+          firstName: phone,
+          source: 'whatsapp_inbound',
+          status: 'lead',
+        }).returning();
+        contactId = newContact.id;
+        await db.insert(contactChannels).values({
+          tenantId,
+          contactId,
+          channelType: 'whatsapp',
+          channelValue: phone,
+        });
+      }
+
+      const msgType = (message.type as string) || 'text';
+      let content = '';
+      let mediaUrl: string | null = null;
+
+      if (msgType === 'text') {
+        content = (message.text as Record<string,string>)?.body || '';
+      } else if (['image','document','audio','video'].includes(msgType)) {
+        const mediaObj = (message[msgType as keyof typeof message] as Record<string,string>) || {};
+        content = mediaObj.caption || `[${msgType}]`;
+        mediaUrl = mediaObj.id ? `media:${mediaObj.id}` : null;
+      } else {
+        content = `[${msgType}]`;
+      }
+
+      const [saved] = await db.insert(messages).values({
+        tenantId,
+        contactId,
+        channel: 'whatsapp',
+        direction: 'inbound',
+        externalId: message.id as string,
+        content,
+        messageType: msgType,
+        mediaUrl,
+        status: 'received',
+      }).onConflictDoNothing().returning();
+
+      if (saved) {
+        emitNewMessage(contactId, { ...saved });
+      }
+    } catch (inboxErr) {
+      console.error('[webhook] inbox save error:', inboxErr);
+    }
+  }
+
+  // Handle status updates (delivered, read)
+  if (value?.statuses) {
+    for (const statusUpdate of value.statuses as Array<Record<string,string>>) {
+      try {
+        const waId = statusUpdate.id;
+        const newStatus = statusUpdate.status;
+        if (!waId || !newStatus) continue;
+
+        // Update message status
+        const updateResult = await db.execute(sql`
+          UPDATE messages SET status = ${newStatus}
+          WHERE external_id = ${waId}
+          RETURNING contact_id
+        `);
+        const contactId = (updateResult.rows[0] as Record<string,string> | undefined)?.contact_id;
+        if (contactId) {
+          emitStatusUpdate(contactId, waId, newStatus);
+        }
+      } catch { /* status update non-critical */ }
+    }
   }
 
   res.status(200).json({ status: 'queued', count: queued });

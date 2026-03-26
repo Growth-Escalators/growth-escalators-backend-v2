@@ -1,10 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { logout, getUser, apiFetch } from '../lib/api.js';
+import {
+  Users, BarChart2, Zap, Mail, Receipt, Activity, Lock,
+  TrendingUp, FileText, Share2, MessageSquare, Settings, Layout
+} from 'lucide-react';
 
 export default function Sidebar() {
   const user = getUser();
   const [perms, setPerms] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     apiFetch('/api/permissions/me')
@@ -12,8 +17,32 @@ export default function Sidebar() {
       .catch(() => setPerms(null));
   }, []);
 
+  // Poll unread count every 30 seconds
+  useEffect(() => {
+    function fetchUnread() {
+      apiFetch('/api/inbox/unread-count')
+        .then(d => setUnreadCount(d?.count ?? 0))
+        .catch(() => {});
+    }
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
   const canBilling = perms?.isOwner || perms?.billingView;
   const canPermissions = perms?.isOwner;
+  const canAds = perms?.isOwner || perms?.reportsMetaAds;
+  const canReports = perms?.isOwner || perms?.reportsView;
+
+  const navClass = ({ isActive }) =>
+    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+      isActive ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+    }`;
+
+  const subNavClass = ({ isActive }) =>
+    `flex items-center gap-2 pl-9 pr-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+      isActive ? 'bg-slate-700 text-orange-400' : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
+    }`;
 
   return (
     <aside className="w-56 min-h-screen bg-slate-900 text-slate-300 flex flex-col">
@@ -31,130 +60,83 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        <NavLink
-          to="/contacts"
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isActive
-                ? 'bg-sky-600 text-white'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`
-          }
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <NavLink to="/contacts" className={navClass}>
+          <Users className="w-4 h-4" />
           Contacts
         </NavLink>
 
-        <NavLink
-          to="/pipeline"
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isActive
-                ? 'bg-sky-600 text-white'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`
-          }
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-          </svg>
+        <NavLink to="/pipeline" className={navClass}>
+          <Layout className="w-4 h-4" />
           Pipeline
         </NavLink>
-        <NavLink
-          to="/pipelines/settings"
-          className={({ isActive }) =>
-            `flex items-center gap-2 pl-9 pr-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              isActive
-                ? 'bg-slate-700 text-orange-400'
-                : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
-            }`
-          }
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
+        <NavLink to="/pipelines/settings" className={subNavClass}>
+          <Settings className="w-3.5 h-3.5" />
           Pipeline Settings
         </NavLink>
-        <NavLink
-          to="/automations"
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isActive
-                ? 'bg-sky-600 text-white'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`
-          }
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+
+        <NavLink to="/automations" className={navClass}>
+          <Zap className="w-4 h-4" />
           Automations
         </NavLink>
-        <NavLink
-          to="/emails"
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isActive
-                ? 'bg-sky-600 text-white'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`
-          }
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
+
+        <NavLink to="/emails" className={navClass}>
+          <Mail className="w-4 h-4" />
           Email Templates
         </NavLink>
+
         {canBilling && (
-          <NavLink
-            to="/billing"
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-sky-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`
-            }
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
-            </svg>
+          <NavLink to="/billing" className={navClass}>
+            <Receipt className="w-4 h-4" />
             Billing
           </NavLink>
         )}
-        <NavLink
-          to="/health"
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isActive
-                ? 'bg-sky-600 text-white'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`
-          }
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-          </svg>
+
+        {/* Meta Ads */}
+        {canAds && (
+          <NavLink to="/ads" className={navClass}>
+            <BarChart2 className="w-4 h-4" />
+            Meta Ads
+          </NavLink>
+        )}
+
+        {/* Reports */}
+        {canReports && (
+          <NavLink to="/reports" className={navClass}>
+            <FileText className="w-4 h-4" />
+            Reports
+          </NavLink>
+        )}
+
+        {/* Social */}
+        <NavLink to="/social" className={navClass}>
+          <Share2 className="w-4 h-4" />
+          Social
+        </NavLink>
+
+        {/* Inbox with unread badge */}
+        <NavLink to="/inbox" className={({ isActive }) =>
+          `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            isActive ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+          }`
+        }>
+          <MessageSquare className="w-4 h-4" />
+          <span className="flex-1">Inbox</span>
+          {unreadCount > 0 && (
+            <span className="bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-5 text-center font-semibold">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </NavLink>
+
+        <NavLink to="/health" className={navClass}>
+          <Activity className="w-4 h-4" />
           System Health
         </NavLink>
+
         {canPermissions && (
-          <NavLink
-            to="/settings/permissions"
-            className={({ isActive }) =>
-              `flex items-center gap-2 pl-9 pr-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                isActive
-                  ? 'bg-slate-700 text-orange-400'
-                  : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
-              }`
-            }
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
+          <NavLink to="/settings/permissions" className={subNavClass}>
+            <Lock className="w-3.5 h-3.5" />
             Permissions
           </NavLink>
         )}

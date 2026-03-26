@@ -210,6 +210,8 @@ export const messages = pgTable(
     externalId: text('external_id'),
     templateName: text('template_name'),
     content: text('content').notNull(),
+    messageType: text('message_type').default('text'),
+    mediaUrl: text('media_url'),
     status: text('status').default('sent'),
     metadata: jsonb('metadata').default({}),
     sentAt: timestamp('sent_at').defaultNow(),
@@ -540,6 +542,7 @@ export const billingClients = pgTable('billing_clients', {
   isActive: boolean('is_active').default(true),
   notes: text('notes'),
   crmContactId: uuid('crm_contact_id'),
+  metaAdAccountId: text('meta_ad_account_id'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -629,4 +632,37 @@ export const invoiceSeries = pgTable('invoice_series', {
   lastNumber: integer('last_number').default(0),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// TABLE 27 — social_accounts
+// ---------------------------------------------------------------------------
+export const socialAccounts = pgTable('social_accounts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  platform: text('platform').notNull(), // 'facebook' | 'instagram'
+  accountId: text('account_id').notNull(),
+  accountName: text('account_name').notNull(),
+  accessToken: text('access_token').notNull(), // AES-256 encrypted
+  thumbnailUrl: text('thumbnail_url'),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// TABLE 28 — social_posts
+// ---------------------------------------------------------------------------
+export const socialPosts = pgTable('social_posts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  socialAccountId: uuid('social_account_id').notNull().references(() => socialAccounts.id),
+  platform: text('platform'),
+  content: text('content').notNull(),
+  mediaUrls: text('media_urls').array(),
+  scheduledAt: timestamp('scheduled_at'),
+  status: text('status').default('draft'), // 'draft' | 'scheduled' | 'published' | 'failed'
+  publishedAt: timestamp('published_at'),
+  externalPostId: text('external_post_id'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at').defaultNow(),
 });
