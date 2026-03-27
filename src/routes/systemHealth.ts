@@ -266,4 +266,40 @@ router.get('/health', requireAuth, async (req, res) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Manual test triggers for SOD/EOD/Blocker (admin-only)
+// ---------------------------------------------------------------------------
+router.post('/test-sod', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'admin') { res.status(403).json({ error: 'admin only' }); return; }
+  try {
+    const { runSodDigest } = await import('../services/sodEodService');
+    const result = await runSodDigest();
+    res.json({ trigger: 'SOD', ...result });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+router.post('/test-eod', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'admin') { res.status(403).json({ error: 'admin only' }); return; }
+  try {
+    const { runEodSummary } = await import('../services/sodEodService');
+    const result = await runEodSummary();
+    res.json({ trigger: 'EOD', ...result });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+router.post('/test-blocker', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'admin') { res.status(403).json({ error: 'admin only' }); return; }
+  try {
+    const { checkAndAlertBlockers } = await import('../services/blockerAlertService');
+    const result = await checkAndAlertBlockers();
+    res.json({ trigger: 'BLOCKER', ...result });
+  } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 export default router;
