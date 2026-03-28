@@ -414,68 +414,116 @@ function LibraryTab({ onUseInPost }) {
 
 // Accounts tab
 function AccountsTab({ accounts, onDelete, onAdd }) {
-  const [showModal, setShowModal] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [manualPageId, setManualPageId] = useState('');
+  const [manualToken, setManualToken] = useState('');
+  const [manualName, setManualName] = useState('');
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualError, setManualError] = useState('');
 
-  async function connectPage(data) {
-    await apiFetch('/api/social/accounts/connect-facebook', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-    onAdd();
+  async function handleManualConnect(e) {
+    e.preventDefault();
+    if (!manualPageId || !manualToken || !manualName) { setManualError('All fields required'); return; }
+    setManualSaving(true);
+    setManualError('');
+    try {
+      await apiFetch('/api/social/accounts/connect-facebook', {
+        method: 'POST',
+        body: JSON.stringify({ pageId: manualPageId, pageName: manualName, accessToken: manualToken }),
+      });
+      onAdd();
+      setShowManual(false);
+      setManualPageId(''); setManualToken(''); setManualName('');
+    } catch (err) {
+      setManualError(err.message || 'Failed');
+    } finally { setManualSaving(false); }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end gap-3">
-        <a href="/api/social/oauth/facebook/start"
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-          <Globe className="w-4 h-4" />
-          Connect with Facebook
-        </a>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200"
-        >
-          <Plus className="w-4 h-4" />
-          Manual Connect
-        </button>
-      </div>
-
-      {accounts.length === 0 && (
+    <div className="space-y-6">
+      {/* Connect with Facebook — primary action */}
+      {accounts.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-          <Share2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-500 text-sm">No social accounts connected yet.</p>
-          <p className="text-slate-400 text-xs mt-1">Click "Connect with Facebook" to get started via OAuth.</p>
+          <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#1877F2' }}>
+            <svg viewBox="0 0 24 24" className="w-8 h-8 text-white fill-current"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"/></svg>
+          </div>
+          <h3 className="text-lg font-bold text-slate-900 mb-1">Connect Your Facebook Pages</h3>
+          <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">Link your Facebook Pages and Instagram accounts to post directly from the CRM.</p>
+          <a href="/api/social/oauth/facebook/start"
+            className="inline-flex items-center gap-2 px-6 py-3 text-white font-semibold rounded-xl text-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#1877F2' }}>
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"/></svg>
+            Connect with Facebook
+          </a>
+          <div className="mt-4">
+            <button onClick={() => setShowManual(s => !s)} className="text-xs text-slate-400 hover:text-slate-600 underline">
+              Add page manually instead
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-slate-500">{accounts.length} account{accounts.length !== 1 ? 's' : ''} connected</p>
+          <div className="flex gap-2">
+            <a href="/api/social/oauth/facebook/start"
+              className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#1877F2' }}>
+              <Plus className="w-4 h-4" />
+              Connect More Pages
+            </a>
+            <button onClick={() => setShowManual(s => !s)} className="text-xs text-slate-400 hover:text-slate-600 px-3 py-2">
+              Manual
+            </button>
+          </div>
         </div>
       )}
 
+      {/* Manual connect form (collapsed by default) */}
+      {showManual && (
+        <form onSubmit={handleManualConnect} className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
+          <p className="text-xs text-slate-500 font-medium">Manual Page Connection (fallback)</p>
+          <input value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Page Name"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          <input value={manualPageId} onChange={e => setManualPageId(e.target.value)} placeholder="Page ID (e.g. 123456789)"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono" />
+          <textarea value={manualToken} onChange={e => setManualToken(e.target.value)} placeholder="Page Access Token" rows={2}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-xs" />
+          {manualError && <p className="text-xs text-red-500">{manualError}</p>}
+          <div className="flex gap-2">
+            <button type="submit" disabled={manualSaving} className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm disabled:opacity-50">
+              {manualSaving ? 'Connecting…' : 'Connect Page'}
+            </button>
+            <button type="button" onClick={() => setShowManual(false)} className="px-4 py-2 text-slate-500 text-sm">Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {/* Connected accounts list */}
       <div className="space-y-3">
         {accounts.map(acct => (
           <div key={acct.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4">
-            <PlatformIcon platform={acct.platform} size="w-8 h-8" />
-            <div className="flex-1">
-              <p className="font-medium text-slate-800">{acct.accountName}</p>
-              <p className="text-xs text-slate-400 capitalize">{acct.platform} · Connected {new Date(acct.createdAt).toLocaleDateString('en-IN')}</p>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+              acct.platform === 'facebook' ? 'bg-blue-100' : 'bg-gradient-to-br from-purple-400 via-pink-400 to-orange-400'
+            }`}>
+              {acct.platform === 'facebook'
+                ? <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current text-blue-600"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"/></svg>
+                : <Camera className="w-5 h-5 text-white" />
+              }
             </div>
-            <span className={`text-xs px-2 py-1 rounded-full font-medium ${acct.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-slate-800 truncate">{acct.accountName}</p>
+              <p className="text-xs text-slate-400 capitalize">{acct.platform} · Connected {acct.createdAt ? new Date(acct.createdAt).toLocaleDateString('en-IN') : ''}</p>
+            </div>
+            <span className={`text-xs px-2 py-1 rounded-full font-medium flex-shrink-0 ${acct.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
               {acct.isActive ? 'Active' : 'Inactive'}
             </span>
             <button
-              onClick={() => onDelete(acct.id)}
-              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+              onClick={() => { if (confirm(`Disconnect ${acct.accountName}?`)) onDelete(acct.id); }}
+              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
             >
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
         ))}
       </div>
-
-      {showModal && (
-        <ConnectModal
-          onClose={() => setShowModal(false)}
-          onSave={connectPage}
-        />
-      )}
     </div>
   );
 }
@@ -505,14 +553,21 @@ export default function SocialPage() {
     { id: 'accounts', label: 'Accounts' },
   ];
 
+  const [toast, setToast] = useState(null);
+
   // Check for OAuth callback params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('connected') === 'true') {
       const pages = params.get('pages') || '0';
-      alert(`${pages} page(s) connected successfully!`);
-      window.history.replaceState({}, '', '/crm/social');
+      setToast({ type: 'success', msg: `${pages} page(s) connected successfully! Your Facebook pages and Instagram accounts are now linked.` });
+      setTab('accounts');
       setRefreshKey(k => k + 1);
+      window.history.replaceState({}, '', '/crm/social');
+    } else if (params.get('error')) {
+      setToast({ type: 'error', msg: 'Connection failed. Please try again or add pages manually.' });
+      setTab('accounts');
+      window.history.replaceState({}, '', '/crm/social');
     }
   }, []);
 
@@ -544,6 +599,14 @@ export default function SocialPage() {
         </div>
 
         <div className="p-6">
+          {toast && (
+            <div className={`mb-4 flex items-center gap-3 rounded-xl px-4 py-3 text-sm ${
+              toast.type === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'
+            }`}>
+              <span className="flex-1">{toast.msg}</span>
+              <button onClick={() => setToast(null)} className="text-lg leading-none opacity-50 hover:opacity-100">&times;</button>
+            </div>
+          )}
           {tab === 'compose' && <ComposeTab accounts={accounts} onPost={() => setRefreshKey(k => k+1)} />}
           {tab === 'calendar' && <CalendarTab />}
           {tab === 'library' && <LibraryTab onUseInPost={(url) => { setTab('compose'); /* media URL will be passed via state */ }} />}
