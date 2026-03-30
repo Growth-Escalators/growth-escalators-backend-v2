@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import https from 'https';
 
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
@@ -29,7 +30,7 @@ export const CHANNELS = {
 // Send a message to a Slack channel
 export async function sendSlackMessage(channel: string, text: string, blocks?: unknown[]): Promise<boolean> {
   if (!SLACK_BOT_TOKEN) {
-    console.error('[Slack] SLACK_BOT_TOKEN not set — cannot send message');
+    logger.error('[Slack] SLACK_BOT_TOKEN not set — cannot send message');
     return false;
   }
 
@@ -60,7 +61,7 @@ export async function sendSlackMessage(channel: string, text: string, blocks?: u
             console.log(`[Slack] message sent to #${channel}`);
             resolve(true);
           } else {
-            console.error(`[Slack] error for #${channel}:`, parsed.error);
+            logger.error(`[Slack] error for #${channel}:`, parsed.error);
             resolve(false);
           }
         } catch {
@@ -70,7 +71,7 @@ export async function sendSlackMessage(channel: string, text: string, blocks?: u
     });
 
     req.on('error', (e) => {
-      console.error('[Slack] request error:', e.message);
+      logger.error('[Slack] request error:', e.message);
       resolve(false);
     });
 
@@ -82,7 +83,7 @@ export async function sendSlackMessage(channel: string, text: string, blocks?: u
 // Send a direct message to a specific Slack user by their ID
 export async function sendSlackDM(userId: string, text: string, blocks?: unknown[]): Promise<boolean> {
   if (!SLACK_BOT_TOKEN) {
-    console.error('[Slack] SLACK_BOT_TOKEN not set — cannot send DM');
+    logger.error('[Slack] SLACK_BOT_TOKEN not set — cannot send DM');
     return false;
   }
 
@@ -115,7 +116,7 @@ async function openDMChannel(userId: string): Promise<string | null> {
         try {
           const parsed = JSON.parse(data) as { ok: boolean; channel?: { id: string }; error?: string };
           if (parsed.ok) resolve(parsed.channel!.id);
-          else { console.error('[Slack] DM open error:', parsed.error); resolve(null); }
+          else { logger.error('[Slack] DM open error:', parsed.error); resolve(null); }
         } catch { resolve(null); }
       });
     });

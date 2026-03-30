@@ -1,14 +1,20 @@
+import logger from '../utils/logger';
 import { fetchTasksForMember, fetchCompletedTodayForMember, type Task } from '../utils/clickupTasks';
 import { sendSlackMessage } from './slackService';
+import {
+  SLACK_SOD_EOD_CHANNEL,
+  SLACK_JATIN, SLACK_SAKCHAM, SLACK_VISHAL, SLACK_NIMISHA, SLACK_KESHAV,
+  CLICKUP_JATIN, CLICKUP_SAKCHAM, CLICKUP_VISHAL, CLICKUP_NIMISHA, CLICKUP_KESHAV,
+} from '../config/constants';
 
-const SOD_EOD_CHANNEL = 'C08EMRX2HHN';
+const SOD_EOD_CHANNEL = SLACK_SOD_EOD_CHANNEL;
 
 const TEAM = [
-  { name: 'Jatin',   clickupId: '88911769',  slackId: 'U073Y677JBB', showTeamOverview: true  },
-  { name: 'Sakcham', clickupId: '242618940', slackId: 'U09TY8RGN30', showTeamOverview: true  },
-  { name: 'Vishal',  clickupId: '100972806', slackId: 'U0ALC9Z09RA', showTeamOverview: false },
-  { name: 'Nimisha', clickupId: '100972807', slackId: 'U0ALMKD2XFB', showTeamOverview: false },
-  { name: 'Keshav',  clickupId: '4800274',   slackId: 'U073Y6S4K4H', showTeamOverview: false },
+  { name: 'Jatin',   clickupId: String(CLICKUP_JATIN),   slackId: SLACK_JATIN,   showTeamOverview: true  },
+  { name: 'Sakcham', clickupId: String(CLICKUP_SAKCHAM),  slackId: SLACK_SAKCHAM,  showTeamOverview: true  },
+  { name: 'Vishal',  clickupId: String(CLICKUP_VISHAL),   slackId: SLACK_VISHAL,   showTeamOverview: false },
+  { name: 'Nimisha', clickupId: String(CLICKUP_NIMISHA),  slackId: SLACK_NIMISHA,  showTeamOverview: false },
+  { name: 'Keshav',  clickupId: String(CLICKUP_KESHAV),   slackId: SLACK_KESHAV,   showTeamOverview: false },
 ];
 
 function delay(ms: number): Promise<void> {
@@ -59,7 +65,7 @@ export async function sendSODDigest(): Promise<{ sent: number; errors: string[] 
         const data = await fetchTasksForMember(m.clickupId);
         return { member: m, ...data };
       } catch (e) {
-        console.error(`[SOD] fetch failed for ${m.name}:`, e);
+        logger.error(`[SOD] fetch failed for ${m.name}:`, e);
         errors.push(`fetch: ${m.name}`);
         return { member: m, overdue: [], dueToday: [], upcoming: [], all: [] };
       }
@@ -135,7 +141,7 @@ export async function sendEODSummary(): Promise<{ sent: number; errors: string[]
         ]);
         return { member: m, completed, openTasks: taskData.all, overdue: taskData.overdue };
       } catch (e) {
-        console.error(`[EOD] fetch failed for ${m.name}:`, e);
+        logger.error(`[EOD] fetch failed for ${m.name}:`, e);
         errors.push(`fetch: ${m.name}`);
         return { member: m, completed: [] as Task[], openTasks: [] as Task[], overdue: [] as Task[] };
       }

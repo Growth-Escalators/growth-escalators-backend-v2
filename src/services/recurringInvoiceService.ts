@@ -3,6 +3,7 @@ import { billingClients, invoices, invoiceLineItems } from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { getNextInvoiceNumber } from './invoiceNumberService';
 import { amountInWords } from './amountInWordsService';
+import { COMPANY_GSTIN } from '../config/constants';
 
 function calculateTax(
   subtotalPaise: number,
@@ -88,7 +89,7 @@ export async function generateMonthlyDraftInvoices(
         clientGstin: client.gstin,
         clientState: client.state,
         clientStateCode: client.stateCode,
-        companyGstin: '08DRYPA4899F2ZZ',
+        companyGstin: COMPANY_GSTIN,
         taxType: client.taxType,
         serviceDescription: client.serviceDescription,
         sacCode: client.sacCode ?? '9983',

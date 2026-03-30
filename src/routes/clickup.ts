@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router } from 'express';
 import { db, events, tenants } from '../db/index';
 import { eq } from 'drizzle-orm';
@@ -49,7 +50,7 @@ router.get('/setup', async (req, res) => {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[clickup] setup error:', msg);
+    logger.error('[clickup] setup error:', msg);
     res.status(500).json({ error: msg });
   }
 });

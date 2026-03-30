@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router, type Request, type Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db, tenants, deals, contacts, processedEvents, events } from '../db/index';
@@ -73,12 +74,12 @@ router.post('/create-order', async (req: Request, res: Response) => {
           channels,
         });
       })
-      .catch((e: Error) => console.error('[cashfree] contact create failed:', e.message));
+      .catch((e: Error) => logger.error('[cashfree] contact create failed:', e.message));
 
     res.json({ payment_session_id: cfData.payment_session_id, order_id: orderId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[cashfree] create-order error:', msg);
+    logger.error('[cashfree] create-order error:', msg);
     res.status(500).json({ error: msg });
   }
 });
@@ -194,7 +195,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
           payload: { eventId: result.eventId, orderId: cfPaymentId, value: orderAmount, stage },
         }).catch(() => {});
       }
-    }).catch((e: Error) => console.error('[cashfree] CAPI purchase error:', e.message));
+    }).catch((e: Error) => logger.error('[cashfree] CAPI purchase error:', e.message));
 
     // Send WhatsApp welcome template (fire-and-forget)
     if (phone && process.env.META_PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN) {
@@ -206,7 +207,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
           messaging_product: 'whatsapp', to: cleanPhone, type: 'template',
           template: { name: 'ge_welcome_d2c', language: { code: 'en' } },
         }),
-      }).catch(e => console.error('[cashfree] WhatsApp template error:', e));
+      }).catch(e => logger.error('[cashfree] WhatsApp template error:', e));
     }
 
     // Log event
@@ -221,7 +222,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
     res.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[cashfree webhook] error:', msg);
+    logger.error('[cashfree webhook] error:', msg);
     res.status(500).json({ error: msg });
   }
 });

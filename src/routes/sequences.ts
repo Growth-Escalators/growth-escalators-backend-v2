@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router } from 'express';
 import { eq, sql } from 'drizzle-orm';
 import { db, sequences, sequenceEnrolments } from '../db/index';
@@ -74,7 +75,7 @@ router.get('/stats', async (req, res) => {
 
     res.json(stats);
   } catch (err) {
-    console.error('[sequences] stats error:', err);
+    logger.error('[sequences] stats error:', err);
     res.status(500).json({ error: 'internal server error' });
   }
 });

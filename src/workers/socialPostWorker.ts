@@ -5,6 +5,7 @@ import { publishSocialPost } from '../routes/social';
 let running = false;
 
 export async function processDueSocialPosts(): Promise<void> {
+  try {
   const due = await db.select().from(socialPosts).where(
     and(
       eq(socialPosts.status, 'scheduled'),
@@ -22,6 +23,9 @@ export async function processDueSocialPosts(): Promise<void> {
         .set({ status: 'failed', errorMessage: String(e) })
         .where(eq(socialPosts.id, post.id));
     }
+  }
+  } catch (error) {
+    console.error('[social-worker] Error during processing:', error);
   }
 }
 

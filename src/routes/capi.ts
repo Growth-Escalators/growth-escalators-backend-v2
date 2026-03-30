@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router } from 'express';
 import { desc, like, eq } from 'drizzle-orm';
 import { db, events, contacts, tenants } from '../db/index';
@@ -33,7 +34,7 @@ router.get('/status', async (req, res) => {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[capi] status error:', msg);
+    logger.error('[capi] status error:', msg);
     res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -87,7 +88,7 @@ router.post('/test', async (req, res) => {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[capi] test error:', msg);
+    logger.error('[capi] test error:', msg);
     res.status(500).json({ error: msg });
   }
 });
@@ -150,7 +151,7 @@ router.post('/manual', async (req, res) => {
     res.json({ success: result.success, eventId: result.eventId, error: result.error });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[capi] manual error:', msg);
+    logger.error('[capi] manual error:', msg);
     res.status(500).json({ error: msg });
   }
 });

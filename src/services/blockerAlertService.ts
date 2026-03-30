@@ -1,19 +1,25 @@
+import logger from '../utils/logger';
 import { db, events } from '../db/index';
 import { and, gte, sql } from 'drizzle-orm';
 import { sendSlackMessage, sendSlackDM } from './slackService';
 import { fetchTasksForMember, type Task } from '../utils/clickupTasks';
+import {
+  SLACK_GENERAL_CHANNEL, SLACK_JATIN, SLACK_SAKCHAM, SLACK_VISHAL, SLACK_NIMISHA, SLACK_KESHAV,
+  BLOCKER_THRESHOLD_DAYS as BT_DAYS, CRITICAL_THRESHOLD_DAYS as CT_DAYS,
+  CLICKUP_JATIN, CLICKUP_SAKCHAM, CLICKUP_VISHAL, CLICKUP_NIMISHA, CLICKUP_KESHAV,
+} from '../config/constants';
 
-const GENERAL_CHANNEL = 'C07489V0RB2';
-const BLOCKER_THRESHOLD_DAYS = 2;
-const CRITICAL_THRESHOLD_DAYS = 5;
-const JATIN_SLACK = 'U073Y677JBB';
+const GENERAL_CHANNEL = SLACK_GENERAL_CHANNEL;
+const BLOCKER_THRESHOLD_DAYS = BT_DAYS;
+const CRITICAL_THRESHOLD_DAYS = CT_DAYS;
+const JATIN_SLACK = SLACK_JATIN;
 
 const TEAM = [
-  { name: 'Jatin',   clickupId: '88911769',  slackId: 'U073Y677JBB' },
-  { name: 'Sakcham', clickupId: '242618940', slackId: 'U09TY8RGN30' },
-  { name: 'Vishal',  clickupId: '100972806', slackId: 'U0ALC9Z09RA' },
-  { name: 'Nimisha', clickupId: '100972807', slackId: 'U0ALMKD2XFB' },
-  { name: 'Keshav',  clickupId: '4800274',   slackId: 'U073Y6S4K4H' },
+  { name: 'Jatin',   clickupId: String(CLICKUP_JATIN),   slackId: SLACK_JATIN },
+  { name: 'Sakcham', clickupId: String(CLICKUP_SAKCHAM),  slackId: SLACK_SAKCHAM },
+  { name: 'Vishal',  clickupId: String(CLICKUP_VISHAL),   slackId: SLACK_VISHAL },
+  { name: 'Nimisha', clickupId: String(CLICKUP_NIMISHA),  slackId: SLACK_NIMISHA },
+  { name: 'Keshav',  clickupId: String(CLICKUP_KESHAV),   slackId: SLACK_KESHAV },
 ];
 
 // In-memory daily dedup: taskId+date → true
@@ -48,7 +54,7 @@ async function logAlertSent(taskId: string, taskName: string, assigneeName: stri
       payload: { taskId, taskName, assigneeName, daysOverdue, alertedAt: new Date().toISOString() },
     });
   } catch (e) {
-    console.error('[blockers] log error:', e);
+    logger.error('[blockers] log error:', e);
   }
 }
 
@@ -67,7 +73,7 @@ export async function checkAndAlertBlockers(): Promise<{ checked: number; alerte
         }
       }
     } catch (e) {
-      console.error(`[blockers] fetch failed for ${member.name}:`, e);
+      logger.error(`[blockers] fetch failed for ${member.name}:`, e);
     }
   }
 

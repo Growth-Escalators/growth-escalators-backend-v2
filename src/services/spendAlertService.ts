@@ -1,12 +1,16 @@
+import logger from '../utils/logger';
 import { db, marketingAccounts } from '../db/index';
 import { eq, sql } from 'drizzle-orm';
 import { sendSlackDM } from './slackService';
 import { logAuditEvent } from '../utils/audit';
+import {
+  META_API_BASE, SPEND_ALERT_COOLDOWN_HOURS,
+  SLACK_JATIN, SLACK_VISHAL, DEFAULT_TENANT_SLUG,
+} from '../config/constants';
 
-const META_API_BASE = 'https://graph.facebook.com/v19.0';
-const ALERT_COOLDOWN_HOURS = 6;
-const JATIN_SLACK = 'U073Y677JBB';
-const VISHAL_SLACK = 'U0ALC9Z09RA';
+const ALERT_COOLDOWN_HOURS = SPEND_ALERT_COOLDOWN_HOURS;
+const JATIN_SLACK = SLACK_JATIN;
+const VISHAL_SLACK = SLACK_VISHAL;
 
 async function getTenantId(): Promise<string | null> {
   try {
@@ -41,7 +45,7 @@ export async function checkSpendAlerts(): Promise<{ checked: number; alerted: nu
       const acctRes = await fetch(`${META_API_BASE}/${acct.accountId}?fields=balance,daily_budget,name,currency,amount_spent&access_token=${token}`);
       const acctData = await acctRes.json() as Record<string, unknown>;
       if (acctData.error) {
-        console.error(`[spend-alert] Meta error for ${acct.accountName}:`, (acctData.error as Record<string,string>).message);
+        logger.error(`[spend-alert] Meta error for ${acct.accountName}:`, (acctData.error as Record<string,string>).message);
         continue;
       }
 
@@ -88,7 +92,7 @@ export async function checkSpendAlerts(): Promise<{ checked: number; alerted: nu
 
       alerted++;
     } catch (e) {
-      console.error(`[spend-alert] error for ${acct.accountName}:`, e);
+      logger.error(`[spend-alert] error for ${acct.accountName}:`, e);
     }
   }
 

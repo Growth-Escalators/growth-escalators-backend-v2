@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import crypto from 'crypto';
 import https from 'https';
 
@@ -53,7 +54,7 @@ interface CapiEventParams {
 
 export async function sendCapiEvent(params: CapiEventParams): Promise<{ success: boolean; eventId: string; error?: string }> {
   if (!PIXEL_ID || !CAPI_TOKEN) {
-    console.error('[CAPI] META_PIXEL_ID or META_CAPI_TOKEN not set');
+    logger.error('[CAPI] META_PIXEL_ID or META_CAPI_TOKEN not set');
     return { success: false, eventId: '', error: 'CAPI credentials not configured' };
   }
 
@@ -118,7 +119,7 @@ export async function sendCapiEvent(params: CapiEventParams): Promise<{ success:
             console.log(`[CAPI] ${params.eventName} sent. Event ID: ${eventId}. Received: ${parsed.events_received}`);
             resolve({ success: true, eventId });
           } else {
-            console.error(`[CAPI] error for ${params.eventName}:`, data);
+            logger.error(`[CAPI] error for ${params.eventName}:`, data);
             resolve({ success: false, eventId, error: data });
           }
         } catch {
@@ -128,7 +129,7 @@ export async function sendCapiEvent(params: CapiEventParams): Promise<{ success:
     });
 
     req.on('error', (e) => {
-      console.error('[CAPI] request error:', e.message);
+      logger.error('[CAPI] request error:', e.message);
       resolve({ success: false, eventId, error: e.message });
     });
 

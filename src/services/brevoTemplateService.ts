@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { eq } from 'drizzle-orm';
 import { db, emailTemplates } from '../db/index';
 
@@ -49,7 +50,7 @@ export async function syncTemplateToBrevo(
       });
       if (!res.ok) {
         const err = await res.text();
-        console.error('[brevoTemplateService] PUT failed:', err);
+        logger.error('[brevoTemplateService] PUT failed:', err);
         return { synced: false, error: err };
       }
       brevoTemplateId = template.brevoTemplateId;
@@ -62,7 +63,7 @@ export async function syncTemplateToBrevo(
       });
       if (!res.ok) {
         const err = await res.text();
-        console.error('[brevoTemplateService] POST failed:', err);
+        logger.error('[brevoTemplateService] POST failed:', err);
         return { synced: false, error: err };
       }
       const data = (await res.json()) as { id: number };
@@ -78,7 +79,7 @@ export async function syncTemplateToBrevo(
     return { synced: true, brevoTemplateId };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[brevoTemplateService] sync error:', msg);
+    logger.error('[brevoTemplateService] sync error:', msg);
     return { synced: false, error: msg };
   }
 }

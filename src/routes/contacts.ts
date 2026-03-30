@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router } from 'express';
 import { eq, and, desc, ilike, or, gte, sql } from 'drizzle-orm';
 import { db, contacts, contactChannels, sequences, sequenceEnrolments, contactNotes } from '../db/index';
@@ -110,7 +111,7 @@ router.get('/counts', async (req, res) => {
     `);
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('[contacts] counts error:', err);
+    logger.error('[contacts] counts error:', err);
     res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -165,7 +166,7 @@ router.get('/:id/conversation', async (req, res) => {
 
   res.json({ items: all });
   } catch (err) {
-    console.error('[contacts] conversation error:', err);
+    logger.error('[contacts] conversation error:', err);
     res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -263,7 +264,7 @@ router.post('/', async (req, res) => {
     contactName: [contact.firstName, contact.lastName].filter(Boolean).join(' '),
     contactId: contact.id,
     source: contact.source || undefined,
-  }).catch(e => console.error('[contacts] ClickUp outreach task error:', e));
+  }).catch(e => logger.error('[contacts] ClickUp outreach task error:', e));
 
   res.status(201).json(contact);
 });

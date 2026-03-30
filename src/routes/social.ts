@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router, type Request, type Response } from 'express';
 import { db, socialAccounts, socialPosts, userPermissions } from '../db/index';
 import { eq, and, lte, gte, sql } from 'drizzle-orm';
@@ -266,7 +267,7 @@ router.post('/posts', async (req: Request, res: Response) => {
 
       if (isImmediate) {
         // Publish immediately in background
-        publishSocialPost(post.id).catch(e => console.error('[social] publish error:', e));
+        publishSocialPost(post.id).catch(e => logger.error('[social] publish error:', e));
       }
 
       results.push({ ...post });
@@ -532,7 +533,7 @@ router.get('/oauth/facebook/callback', async (req: Request, res: Response) => {
 
     res.redirect(`/crm/social?connected=true&pages=${pagesConnected}`);
   } catch (e) {
-    console.error('[social oauth] callback error:', e);
+    logger.error('[social oauth] callback error:', e);
     res.redirect('/crm/social?error=callback_failed');
   }
 });

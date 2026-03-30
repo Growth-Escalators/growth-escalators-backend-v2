@@ -13,6 +13,7 @@ interface SequenceStep {
 const POLL_INTERVAL_MS = 30 * 1000; // 30 seconds
 
 async function processSequenceSteps(): Promise<void> {
+  try {
   const now = new Date();
 
   // Fetch active enrolments whose next step is due
@@ -94,6 +95,9 @@ async function processSequenceSteps(): Promise<void> {
   }
 
   console.log(`[sequenceWorker] Processed ${processed} enrolments`);
+  } catch (error) {
+    console.error('[sequenceWorker] Error during processing:', error);
+  }
 }
 
 export function startSequenceWorker(): void {

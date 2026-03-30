@@ -1,4 +1,9 @@
 import { sendSlackMessage } from '../services/slackService';
+import {
+  SLACK_JATIN, SLACK_SAKCHAM, SLACK_VISHAL, SLACK_NIMISHA, SLACK_KESHAV,
+  CLICKUP_JATIN, CLICKUP_SAKCHAM, CLICKUP_VISHAL, CLICKUP_NIMISHA, CLICKUP_KESHAV,
+  SLACK_SOD_EOD_CHANNEL, SLACK_GENERAL_CHANNEL, SLACK_SALES_BD_CHANNEL, SLACK_PERF_MARKETING_CHANNEL,
+} from '../config/constants';
 
 export interface TeamMember {
   name: string;
@@ -8,34 +13,34 @@ export interface TeamMember {
 }
 
 export const TEAM_MEMBERS: TeamMember[] = [
-  { name: 'Jatin', clickupId: '88911769', slackId: 'U073Y677JBB', email: 'jatin@growthescalators.com' },
-  { name: 'Sakcham', clickupId: '242618940', slackId: 'U09TY8RGN30', email: 'sakcham@growthescalators.com' },
-  { name: 'Vishal', clickupId: '100972806', slackId: 'U0ALC9Z09RA', email: 'vishal.malakar@growthescalators.com' },
-  { name: 'Nimisha', clickupId: '100972807', slackId: 'U0ALMKD2XFB', email: 'nimisha.daiya@growthescalators.com' },
-  { name: 'Keshav', clickupId: '4800274', slackId: 'U073Y6S4K4H', email: 'keshav.growthescalators@gmail.com' },
+  { name: 'Jatin', clickupId: String(CLICKUP_JATIN), slackId: SLACK_JATIN, email: 'jatin@growthescalators.com' },
+  { name: 'Sakcham', clickupId: String(CLICKUP_SAKCHAM), slackId: SLACK_SAKCHAM, email: 'sakcham@growthescalators.com' },
+  { name: 'Vishal', clickupId: String(CLICKUP_VISHAL), slackId: SLACK_VISHAL, email: 'vishal.malakar@growthescalators.com' },
+  { name: 'Nimisha', clickupId: String(CLICKUP_NIMISHA), slackId: SLACK_NIMISHA, email: 'nimisha.daiya@growthescalators.com' },
+  { name: 'Keshav', clickupId: String(CLICKUP_KESHAV), slackId: SLACK_KESHAV, email: 'keshav.growthescalators@gmail.com' },
 ];
 
 export const CLICKUP_IDS = {
-  jatin: 88911769,
-  sakcham: 242618940,
-  vishal: 100972806,
-  nimisha: 100972807,
-  keshav: 4800274,
+  jatin: CLICKUP_JATIN,
+  sakcham: CLICKUP_SAKCHAM,
+  vishal: CLICKUP_VISHAL,
+  nimisha: CLICKUP_NIMISHA,
+  keshav: CLICKUP_KESHAV,
 };
 
 export const SLACK_IDS = {
-  jatin: 'U073Y677JBB',
-  sakcham: 'U09TY8RGN30',
-  vishal: 'U0ALC9Z09RA',
-  nimisha: 'U0ALMKD2XFB',
-  keshav: 'U073Y6S4K4H',
+  jatin: SLACK_JATIN,
+  sakcham: SLACK_SAKCHAM,
+  vishal: SLACK_VISHAL,
+  nimisha: SLACK_NIMISHA,
+  keshav: SLACK_KESHAV,
 };
 
 export const SLACK_CHANNELS = {
-  sodEod: 'C08EMRX2HHN',
-  general: 'C07489V0RB2',
-  salesBd: 'C0AMPEF302G',
-  performanceMarketing: 'performance-marketing',
+  sodEod: SLACK_SOD_EOD_CHANNEL,
+  general: SLACK_GENERAL_CHANNEL,
+  salesBd: SLACK_SALES_BD_CHANNEL,
+  performanceMarketing: SLACK_PERF_MARKETING_CHANNEL,
 };
 
 export function getSlackIdFromClickup(clickupId: string): string {

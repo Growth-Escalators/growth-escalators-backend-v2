@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router, type Request, type Response } from 'express';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/index';
@@ -354,7 +355,7 @@ router.post('/', async (req: Request, res: Response) => {
       results: savedResults,
     });
   } catch (err) {
-    console.error('[discover] search error:', err);
+    logger.error('[discover] search error:', err);
     // Clean up empty search record
     await db.delete(discoverySearches).where(eq(discoverySearches.id, search.id));
     return res.status(500).json({ error: String(err) });
@@ -375,7 +376,7 @@ router.get('/searches', async (req: Request, res: Response) => {
       .limit(20);
     return res.json({ searches: rows });
   } catch (err) {
-    console.error('[discover] searches error:', err);
+    logger.error('[discover] searches error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -399,7 +400,7 @@ router.get('/searches/:id/results', async (req: Request, res: Response) => {
       .orderBy(desc(discoveryResults.fitScore));
     return res.json({ results });
   } catch (err) {
-    console.error('[discover] results error:', err);
+    logger.error('[discover] results error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -427,7 +428,7 @@ router.patch('/results/:id', async (req: Request, res: Response) => {
       .returning();
     return res.json({ result: updated });
   } catch (err) {
-    console.error('[discover] patch result error:', err);
+    logger.error('[discover] patch result error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -547,7 +548,7 @@ router.post('/import', async (req: Request, res: Response) => {
       importedIds: imported,
     });
   } catch (err) {
-    console.error('[discover] import error:', err);
+    logger.error('[discover] import error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -651,7 +652,7 @@ router.get('/export', async (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', 'attachment; filename="lead-discovery.csv"');
     return res.send(csv);
   } catch (err) {
-    console.error('[discover] export error:', err);
+    logger.error('[discover] export error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -691,7 +692,7 @@ router.get('/budget', async (req: Request, res: Response) => {
       status,
     });
   } catch (err) {
-    console.error('[discover] budget error:', err);
+    logger.error('[discover] budget error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -727,7 +728,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 
     return res.json({ totalDiscovered, totalImported, queriesRun, costThisMonth });
   } catch (err) {
-    console.error('[discover] stats error:', err);
+    logger.error('[discover] stats error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });

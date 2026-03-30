@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { eq } from 'drizzle-orm';
 import { db, tenants, bookings, deals } from '../db/index';
 import { findOrCreateContact, updateContactScore } from './contactService';
@@ -209,11 +210,11 @@ export async function processBooking(payload: Record<string, unknown>) {
   sendLeadEvent({
     contact: { id: contact.id, email: attendeeEmail, phone: attendeePhone, firstName, lastName },
     estimatedValue,
-  }).catch((e: Error) => console.error('[booking] CAPI lead error:', e.message));
+  }).catch((e: Error) => logger.error('[booking] CAPI lead error:', e.message));
 
   sendScheduleEvent({
     contact: { id: contact.id, email: attendeeEmail, phone: attendeePhone, firstName, lastName },
-  }).catch((e: Error) => console.error('[booking] CAPI schedule error:', e.message));
+  }).catch((e: Error) => logger.error('[booking] CAPI schedule error:', e.message));
 
   if (score.totalScore >= 50) {
     createCallPrepTask({
@@ -222,7 +223,7 @@ export async function processBooking(payload: Record<string, unknown>) {
       score: score.totalScore,
       tier,
       scheduledAt: scheduledAt.toISOString(),
-    }).catch((e: Error) => console.error('[booking] ClickUp call prep error:', e.message));
+    }).catch((e: Error) => logger.error('[booking] ClickUp call prep error:', e.message));
   }
 
   // -------------------------------------------------------------------------

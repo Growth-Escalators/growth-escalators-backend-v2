@@ -1,16 +1,22 @@
 import https from 'https';
 import { sendSlackMessage } from './slackService';
+import logger from '../utils/logger';
+import {
+  SLACK_SALES_BD_CHANNEL,
+  CLICKUP_JATIN, CLICKUP_SAKCHAM, CLICKUP_VISHAL, CLICKUP_NIMISHA, CLICKUP_KESHAV,
+  SLACK_JATIN, SLACK_SAKCHAM,
+} from '../config/constants';
 
 const CLICKUP_TOKEN = process.env.CLICKUP_API_TOKEN;
 const CLICKUP_LIST_ID = process.env.CLICKUP_LIST_ID;
-const SALES_BD_CHANNEL = 'C0AMPEF302G';
+const SALES_BD_CHANNEL = SLACK_SALES_BD_CHANNEL;
 
 const CLICKUP_IDS = {
-  jatin: 88911769,
-  sakcham: 242618940,
-  vishal: 100972806,
-  nimisha: 100972807,
-  keshav: 4800274,
+  jatin: CLICKUP_JATIN,
+  sakcham: CLICKUP_SAKCHAM,
+  vishal: CLICKUP_VISHAL,
+  nimisha: CLICKUP_NIMISHA,
+  keshav: CLICKUP_KESHAV,
 };
 
 interface ClickUpTask {
@@ -24,7 +30,7 @@ interface ClickUpTask {
 }
 
 async function clickupRequest(method: string, path: string, body?: unknown): Promise<unknown> {
-  if (!CLICKUP_TOKEN) { console.error('[ClickUp] token not set'); return null; }
+  if (!CLICKUP_TOKEN) { logger.error('[ClickUp] token not set'); return null; }
 
   return new Promise((resolve) => {
     const bodyStr = body ? JSON.stringify(body) : '';
@@ -44,7 +50,7 @@ async function clickupRequest(method: string, path: string, body?: unknown): Pro
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
     });
-    req.on('error', (e) => { console.error('[ClickUp] request error:', e.message); resolve(null); });
+    req.on('error', (e) => { logger.error('[ClickUp] request error:', e.message); resolve(null); });
     if (bodyStr) req.write(bodyStr);
     req.end();
   });
@@ -70,7 +76,7 @@ export async function createTask(task: ClickUpTask): Promise<{ id: string; url: 
     console.log(`[ClickUp] task created: ${task.name} — ID: ${result.id}`);
     return { id: result.id, url: result.url ?? '' };
   }
-  console.error('[ClickUp] task creation failed:', result);
+  logger.error('[ClickUp] task creation failed:', result);
   return null;
 }
 
@@ -113,7 +119,7 @@ export async function createOnboardingTask(params: {
   });
 
   sendSlackMessage(SALES_BD_CHANNEL,
-    `🎉 *Deal Won!* ${params.contactName} — Onboarding task created for <@U073Y677JBB> + <@U09TY8RGN30>`
+    `🎉 *Deal Won!* ${params.contactName} — Onboarding task created for <@${SLACK_JATIN}> + <@${SLACK_SAKCHAM}>`
   ).catch(() => {});
 
   return result;
@@ -137,7 +143,7 @@ export async function createFollowUpTask(params: {
   });
 
   sendSlackMessage(SALES_BD_CHANNEL,
-    `📤 *Proposal sent* to ${params.contactName} — Follow-up task created for <@U09TY8RGN30>`
+    `📤 *Proposal sent* to ${params.contactName} — Follow-up task created for <@${SLACK_SAKCHAM}>`
   ).catch(() => {});
 
   return result;
@@ -161,7 +167,7 @@ export async function createLostDealAnalysisTask(params: {
   });
 
   sendSlackMessage(SALES_BD_CHANNEL,
-    `📉 *Deal Lost* — ${params.contactName}. Reason: ${params.lostReason}. Analysis task for <@U073Y677JBB>`
+    `📉 *Deal Lost* — ${params.contactName}. Reason: ${params.lostReason}. Analysis task for <@${SLACK_JATIN}>`
   ).catch(() => {});
 
   return result;
@@ -193,11 +199,11 @@ export async function createCallPrepTask(params: {
   // Post to #sales-bd
   if (isHot) {
     sendSlackMessage(SALES_BD_CHANNEL,
-      `🔥 *Hot Lead Alert!*\n\n*Name:* ${params.contactName}\n*Score:* ${params.score}/100\n*Phone:* ${params.phone || 'N/A'}\n*Ad Spend:* ${params.adSpend || 'N/A'}\n*Revenue:* ${params.revenue || 'N/A'}\n*Call Time:* ${callTime}\n\n<@U073Y677JBB> <@U09TY8RGN30> — prep for this call!`
+      `🔥 *Hot Lead Alert!*\n\n*Name:* ${params.contactName}\n*Score:* ${params.score}/100\n*Phone:* ${params.phone || 'N/A'}\n*Ad Spend:* ${params.adSpend || 'N/A'}\n*Revenue:* ${params.revenue || 'N/A'}\n*Call Time:* ${callTime}\n\n<@${SLACK_JATIN}> <@${SLACK_SAKCHAM}> — prep for this call!`
     ).catch(() => {});
   } else {
     sendSlackMessage(SALES_BD_CHANNEL,
-      `📞 *Warm Lead Booked*\n\n*Name:* ${params.contactName}\n*Score:* ${params.score}/100\n*Phone:* ${params.phone || 'N/A'}\n*Call Time:* ${callTime}\n\n<@U09TY8RGN30> — please prep for this call.`
+      `📞 *Warm Lead Booked*\n\n*Name:* ${params.contactName}\n*Score:* ${params.score}/100\n*Phone:* ${params.phone || 'N/A'}\n*Call Time:* ${callTime}\n\n<@${SLACK_SAKCHAM}> — please prep for this call.`
     ).catch(() => {});
   }
 
