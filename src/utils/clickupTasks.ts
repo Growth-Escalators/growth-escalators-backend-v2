@@ -1,7 +1,9 @@
+import logger from './logger';
 import https from 'https';
+import { CLICKUP_TEAM_ID as DEFAULT_TEAM_ID } from '../config/constants';
 
 const CLICKUP_TOKEN = process.env.CLICKUP_API_TOKEN;
-const CLICKUP_TEAM_ID = process.env.CLICKUP_TEAM_ID || '9016403868';
+const CLICKUP_TEAM_ID = process.env.CLICKUP_TEAM_ID || DEFAULT_TEAM_ID;
 
 export interface Task {
   id: string;
@@ -96,12 +98,12 @@ function fetchPage(clickupUserId: string, page: number, extraParams?: Record<str
           const parsed = JSON.parse(data) as { tasks?: RawTask[]; last_page?: boolean };
           resolve({ tasks: parsed.tasks || [], lastPage: parsed.last_page !== false });
         } catch (e) {
-          console.error('[ClickUp] parse error:', e);
+          logger.error('[ClickUp] parse error:', e);
           resolve({ tasks: [], lastPage: true });
         }
       });
     }).on('error', (e) => {
-      console.error('[ClickUp] request error:', e.message);
+      logger.error('[ClickUp] request error:', e.message);
       resolve({ tasks: [], lastPage: true });
     });
   });

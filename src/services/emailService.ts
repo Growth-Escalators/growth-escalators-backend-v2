@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { BrevoClient } from '@getbrevo/brevo';
 import { eq, and, sql } from 'drizzle-orm';
 import { db, contacts, contactChannels, messages, emailTemplates } from '../db/index';
@@ -118,7 +119,7 @@ export async function addContactToBrevo(
     });
     return { success: true };
   } catch (err) {
-    console.error('[emailService] addContactToBrevo error:', err);
+    logger.error('[emailService] addContactToBrevo error:', err);
     return { success: false };
   }
 }

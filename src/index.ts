@@ -2,12 +2,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import path from 'path';
+import crypto from 'crypto';
 import { createServer } from 'http';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { Server as SocketServer } from 'socket.io';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { db } from './db/index';
-import { sql } from 'drizzle-orm';
+// Migrations run via dist/scripts/migrate.js at startup (see railway.json)
+import { pool } from './db/index';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import webhooksRouter from './routes/webhooks';
@@ -39,16 +39,9 @@ import discoverRouter from './routes/discover';
 import marketingRouter from './routes/marketing';
 import searchRouter from './routes/search';
 import auditRouter from './routes/audit';
-import cron from 'node-cron';
-import { checkAndAlertBlockers } from './services/blockerAlertService';
-import { generateMonthlyDraftInvoices } from './services/recurringInvoiceService';
-import { sendSODDigest, sendEODSummary } from './services/sodEodService';
-import { checkSpendAlerts } from './services/spendAlertService';
+// Workers and cron jobs now run via src/worker.ts (see railway.json)
 import analyticsRouter from './routes/analytics';
 import { requireAuth } from './middleware/auth';
-import { startStuckJobWorker } from './workers/stuckJobWorker';
-import { startSequenceWorker } from './workers/sequenceWorker';
-import { startSocialPostWorker } from './workers/socialPostWorker';
 
 const app = express();
 
@@ -61,6 +54,24 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 // JSON body parser
 // ---------------------------------------------------------------------------
 app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// Request ID middleware
+// ---------------------------------------------------------------------------
+declare global {
+  namespace Express {
+    interface Request {
+      requestId?: string;
+    }
+  }
+}
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const requestId = (req.headers['x-request-id'] as string) || crypto.randomUUID();
+  req.requestId = requestId;
+  res.setHeader('X-Request-ID', requestId);
+  next();
+});
 
 // ---------------------------------------------------------------------------
 // Rate limiting
@@ -218,17 +229,8 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // Start server (run pending DB migrations first)
 // ---------------------------------------------------------------------------
 const PORT = process.env.PORT ?? 3000;
-const migrationsFolder = path.join(__dirname, '..', 'src', 'db', 'migrations');
 
 async function startServer() {
-  try {
-    console.log('[migrate] running pending migrations…');
-    await migrate(db, { migrationsFolder });
-    console.log('[migrate] all migrations applied');
-  } catch (err) {
-    console.error('[migrate] migration failed — starting anyway:', err);
-  }
-
   // Create HTTP server + Socket.io
   const httpServer = createServer(app);
   const io = new SocketServer(httpServer, {
@@ -258,104 +260,41 @@ async function startServer() {
 
   httpServer.listen(PORT, () => {
     console.log(`Growth Escalators backend running on port ${PORT}`);
-    startStuckJobWorker();
-    startSequenceWorker();
-    startSocialPostWorker();
+    // Workers and cron jobs now run in a separate process (src/worker.ts)
 
-    // Blocker alerts — 10:15 AM IST (04:45 UTC) + 5:00 PM IST (11:30 UTC), Mon-Sat
-    cron.schedule('45 4 * * 1-6', async () => {
-      console.log('[CRON] Running blocker alerts (morning)...');
-      try { await checkAndAlertBlockers(); } catch (e) { console.error('[CRON] Blocker alerts failed:', e); }
-    }, { timezone: 'UTC' });
-    cron.schedule('30 11 * * 1-6', async () => {
-      console.log('[CRON] Running blocker alerts (evening)...');
-      try { await checkAndAlertBlockers(); } catch (e) { console.error('[CRON] Blocker alerts failed:', e); }
-    }, { timezone: 'UTC' });
-    console.log('[cron] blocker alerts scheduled — 10:15 AM + 5:00 PM IST Mon-Sat');
+    // -----------------------------------------------------------------------
+    // Graceful shutdown
+    // -----------------------------------------------------------------------
+    const shutdown = async (signal: string) => {
+      console.log(`[shutdown] ${signal} received — starting graceful shutdown…`);
 
-    // SOD Digest — 10 AM IST (04:30 UTC), Mon-Sat
-    cron.schedule('30 4 * * 1-6', async () => {
-      console.log('[CRON] Running SOD digest...');
-      try { await sendSODDigest(); console.log('[CRON] SOD digest sent'); }
-      catch (e) { console.error('[CRON] SOD digest failed:', e); }
-    }, { timezone: 'UTC' });
-    console.log('[cron] SOD digest scheduled — 10:00 AM IST Mon-Sat');
+      // 1. Stop accepting new connections
+      console.log('[shutdown] closing HTTP server…');
+      httpServer.close(() => {
+        console.log('[shutdown] HTTP server closed');
+      });
 
-    // EOD Summary — 7 PM IST (13:30 UTC), Mon-Sat
-    cron.schedule('30 13 * * 1-6', async () => {
-      console.log('[CRON] Running EOD summary...');
-      try { await sendEODSummary(); console.log('[CRON] EOD summary sent'); }
-      catch (e) { console.error('[CRON] EOD summary failed:', e); }
-    }, { timezone: 'UTC' });
-    console.log('[cron] EOD summary scheduled — 7:00 PM IST Mon-Sat');
+      // 2. Close Socket.io
+      io.close();
+      console.log('[shutdown] Socket.io closed');
 
-    // Spend alert check — every hour
-    cron.schedule('0 * * * *', async () => {
-      console.log('[cron] checking ad account balances…');
+      // 3. Wait up to 10s for in-flight requests
+      await new Promise(resolve => setTimeout(resolve, 10_000));
+
+      // 4. Close database pool
       try {
-        await checkSpendAlerts();
+        await pool.end();
+        console.log('[shutdown] database pool closed');
       } catch (e) {
-        console.error('[cron] spend alert check failed:', e);
+        console.error('[shutdown] error closing database pool:', e);
       }
-    }, { timezone: 'UTC' });
-    console.log('[cron] spend alert check scheduled — hourly');
 
-    // Generate monthly draft invoices on the 1st of every month at 9 AM IST (3:30 AM UTC)
-    cron.schedule('30 3 1 * *', async () => {
-      console.log('[cron] generating monthly draft invoices…');
-      try {
-        const tenantResult = await db.execute(sql`SELECT id FROM tenants WHERE slug = 'growth-escalators' LIMIT 1`);
-        const tenantId = (tenantResult.rows[0] as { id: string } | undefined)?.id;
-        if (!tenantId) return;
+      console.log('[shutdown] graceful shutdown complete');
+      process.exit(0);
+    };
 
-        const result = await generateMonthlyDraftInvoices(tenantId);
-        console.log(`[cron] monthly invoices: generated=${result.generated}, errors=${result.errors.length}`);
-
-        if (result.generated > 0) {
-          const { sendSlackMessage } = await import('./services/slackService');
-          const month = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-          await sendSlackMessage('C0AMPEF302G',
-            `🧾 *Invoice Drafts Ready — ${month}*\n\nDrafts generated for all active billing clients.\nReview and approve at: /crm/billing\n\n<@U073Y677JBB> <@U09TY8RGN30> — please review before sending to clients.`);
-        }
-      } catch (e) {
-        console.error('[cron] monthly invoice generation failed:', e);
-      }
-    }, { timezone: 'UTC' });
-    console.log('[cron] monthly invoice drafts scheduled — 1st of month at 9 AM IST');
-
-    // Overdue invoice detection — daily at 10 AM IST (4:30 AM UTC)
-    cron.schedule('30 4 * * *', async () => {
-      console.log('[cron] checking overdue invoices…');
-      try {
-        const overdueResult = await db.execute(sql`
-          SELECT i.id, i.invoice_number, i.total_amount, i.due_date,
-                 bc.name as client_name
-          FROM invoices i
-          JOIN billing_clients bc ON bc.id = i.client_id
-          WHERE i.status = 'sent'
-            AND i.due_date < now()
-            AND i.tenant_id = (SELECT id FROM tenants WHERE slug = 'growth-escalators')
-        `);
-
-        for (const inv of overdueResult.rows as Array<Record<string, unknown>>) {
-          await db.execute(sql`UPDATE invoices SET status = 'overdue', updated_at = now() WHERE id = ${inv.id}`);
-          try {
-            const { sendSlackMessage } = await import('./services/slackService');
-            const amount = ((inv.total_amount as number) / 100).toLocaleString('en-IN');
-            const dueDate = new Date(inv.due_date as string).toLocaleDateString('en-IN');
-            const daysOverdue = Math.floor((Date.now() - new Date(inv.due_date as string).getTime()) / 86400000);
-            await sendSlackMessage('C0AMPEF302G',
-              `⚠️ *Overdue Invoice Alert*\n\n*Client:* ${inv.client_name}\n*Invoice:* ${inv.invoice_number}\n*Amount:* ₹${amount}\n*Due Date:* ${dueDate}\n*Overdue by:* ${daysOverdue} days\n\n<@U073Y677JBB> <@U09TY8RGN30> — please follow up with the client.`);
-          } catch { /* slack error non-critical */ }
-        }
-        if ((overdueResult.rows as unknown[]).length > 0) {
-          console.log(`[cron] marked ${(overdueResult.rows as unknown[]).length} invoice(s) as overdue`);
-        }
-      } catch (e) {
-        console.error('[cron] overdue check failed:', e);
-      }
-    }, { timezone: 'UTC' });
-    console.log('[cron] overdue invoice check scheduled — daily at 10 AM IST');
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   });
 }
 

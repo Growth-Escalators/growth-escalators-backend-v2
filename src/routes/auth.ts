@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router, type Request, type Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { verify, hash } from '@node-rs/argon2';
@@ -50,7 +51,7 @@ router.post('/login', async (req: Request, res: Response) => {
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[auth] login error:', msg);
+    logger.error('[auth] login error:', msg);
     res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -119,7 +120,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 
     res.json({ message: 'If that email is registered, a reset code has been sent.' });
   } catch (err) {
-    console.error('[auth] forgot-password error:', err);
+    logger.error('[auth] forgot-password error:', err);
     res.json({ message: 'If that email is registered, a reset code has been sent.' });
   }
 });
@@ -170,7 +171,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
 
     res.json({ message: 'Password reset successful. Please log in with your new password.' });
   } catch (err) {
-    console.error('[auth] reset-password error:', err);
+    logger.error('[auth] reset-password error:', err);
     res.status(500).json({ error: 'internal server error' });
   }
 });

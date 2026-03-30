@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router } from 'express';
 import { eq, count, desc, sql } from 'drizzle-orm';
 import { db, processedEvents, jobs, messages, contacts, contactChannels } from '../db/index';
@@ -147,7 +148,7 @@ router.post('/meta-wa', validateMetaWebhook, async (req, res) => {
         emitNewMessage(contactId, { ...saved });
       }
     } catch (inboxErr) {
-      console.error('[webhook] inbox save error:', inboxErr);
+      logger.error('[webhook] inbox save error:', inboxErr);
     }
   }
 
@@ -207,7 +208,7 @@ router.post('/calcom', async (req, res) => {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[calcom webhook] processBooking failed:', message);
+    logger.error('[calcom webhook] processBooking failed:', message);
     await insertJob(null, 'booking_failed', { uid, error: message, payload: req.body }, `booking_failed:${uid}`);
     res.status(200).json({ status: 'error', error: message });
   }

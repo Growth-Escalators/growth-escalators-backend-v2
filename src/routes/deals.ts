@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 import { Router } from 'express';
 import { eq, and, sql } from 'drizzle-orm';
 import { db, deals, contacts, pipelines } from '../db/index';
@@ -43,7 +44,7 @@ router.get('/', async (req, res) => {
 
     res.json({ deals: enriched });
   } catch (err) {
-    console.error('[deals] GET / error:', err);
+    logger.error('[deals] GET / error:', err);
     res.status(500).json({ error: 'internal server error' });
   }
 });
@@ -133,7 +134,7 @@ router.patch('/:id', async (req, res) => {
             return createLostDealAnalysisTask({ contactName, contactId: deal.contactId, lostReason: deal.lostReason ?? 'Not specified', dealValue: dealValue ?? undefined });
           }
         })
-        .catch((e: Error) => console.error('[deals] ClickUp task error:', e.message));
+        .catch((e: Error) => logger.error('[deals] ClickUp task error:', e.message));
     }
   }
 

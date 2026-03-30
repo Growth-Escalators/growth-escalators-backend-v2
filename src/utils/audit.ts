@@ -1,3 +1,4 @@
+import logger from './logger';
 import { db, auditEvents } from '../db/index';
 import type { Request } from 'express';
 
@@ -22,6 +23,6 @@ export async function logAuditEvent(
       userAgent: req ? (req.headers['user-agent'] || null) : null,
     });
   } catch (e) {
-    console.error('[audit] failed to log event:', e);
+    logger.error('[audit] failed to log event:', e);
   }
 }

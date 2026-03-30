@@ -13,6 +13,7 @@ const pool = new Pool({
   connectionTimeoutMillis: 2_000,
 });
 
+export { pool };
 export const db = drizzle(pool, { schema });
 
 // Re-export all tables for convenient imports throughout the app

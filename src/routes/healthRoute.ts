@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { sql, count, eq } from 'drizzle-orm';
+import { sql, count, eq, and, lt } from 'drizzle-orm';
 import {
   db,
   contacts,
@@ -7,32 +7,72 @@ import {
   bookings,
   sequences,
   sequenceEnrolments,
+  messages,
 } from '../db/index';
 
 const router = Router();
 
 // ---------------------------------------------------------------------------
 // GET /health  (mounted at app root)
-// Returns service health including DB connectivity check.
+// Returns service health including DB connectivity, stuck jobs, last webhook.
 // ---------------------------------------------------------------------------
 router.get('/health', async (_req, res) => {
-  let databaseConnected = false;
+  type CheckStatus = 'ok' | 'error' | 'warning' | 'stale';
+
+  // 1. Database connectivity
+  let dbStatus: CheckStatus = 'error';
+  let dbMessage: string | undefined;
   try {
     await db.execute(sql`SELECT 1`);
-    databaseConnected = true;
-  } catch {
-    databaseConnected = false;
+    dbStatus = 'ok';
+  } catch (e) {
+    dbMessage = e instanceof Error ? e.message : 'unknown error';
   }
 
+  // 2. Stuck jobs (processing for > 2 hours)
+  let stuckJobCount = 0;
+  let stuckStatus: CheckStatus = 'ok';
+  try {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const [result] = await db
+      .select({ count: count() })
+      .from(jobs)
+      .where(and(eq(jobs.status, 'processing'), lt(jobs.processingStartedAt, twoHoursAgo)));
+    stuckJobCount = Number(result.count);
+    stuckStatus = stuckJobCount > 0 ? 'warning' : 'ok';
+  } catch { /* ignore */ }
+
+  // 3. Last webhook (most recent inbound WA message)
+  let lastWebhookAt: string | null = null;
+  let webhookStatus: CheckStatus = 'ok';
+  try {
+    const [latest] = await db
+      .select({ sentAt: messages.sentAt })
+      .from(messages)
+      .where(eq(messages.direction, 'inbound'))
+      .orderBy(sql`sent_at DESC`)
+      .limit(1);
+    if (latest?.sentAt) {
+      lastWebhookAt = new Date(latest.sentAt).toISOString();
+      const hoursSince = (Date.now() - new Date(latest.sentAt).getTime()) / (1000 * 60 * 60);
+      webhookStatus = hoursSince > 24 ? 'stale' : 'ok';
+    }
+  } catch { /* ignore */ }
+
+  // Overall status
+  let overallStatus: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
+  if (dbStatus === 'error') overallStatus = 'unhealthy';
+  else if (stuckStatus === 'warning' || webhookStatus === 'stale') overallStatus = 'degraded';
+
   res.json({
-    status: databaseConnected ? 'ok' : 'degraded',
-    env: process.env.NODE_ENV,
+    status: overallStatus,
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
-    database: databaseConnected,
-    workers: {
-      sequenceWorker: 'running',
-      stuckJobWorker: 'running',
+    env: process.env.NODE_ENV,
+    checks: {
+      database: { status: dbStatus, ...(dbMessage && { message: dbMessage }) },
+      stuckJobs: { status: stuckStatus, count: stuckJobCount },
+      lastWebhook: { status: webhookStatus, lastReceivedAt: lastWebhookAt },
     },
   });
 });
