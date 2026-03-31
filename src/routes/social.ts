@@ -3,6 +3,7 @@ import { Router, type Request, type Response } from 'express';
 import { db, socialAccounts, socialPosts, userPermissions } from '../db/index';
 import { eq, and, lte, gte, sql } from 'drizzle-orm';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import { uploadToR2, deleteFromR2, listR2Objects } from '../utils/r2';
 
@@ -413,21 +414,47 @@ router.delete('/library/:key', async (req: Request, res: Response) => {
 // Facebook OAuth routes
 // ---------------------------------------------------------------------------
 
+export default router;
+
+// ---------------------------------------------------------------------------
+// OAuth router — mounted WITHOUT requireAuth so browser redirects work
+// Handles /api/social/oauth/facebook/start and /callback
+// ---------------------------------------------------------------------------
+export const oauthRouter = Router();
+
 // GET /api/social/oauth/facebook/start
-router.get('/oauth/facebook/start', async (req: Request, res: Response) => {
+// Accepts JWT via ?token= query param (browser nav) or Authorization header (API)
+oauthRouter.get('/facebook/start', async (req: Request, res: Response) => {
   const appId = process.env.META_APP_ID;
   if (!appId) { res.status(503).json({ error: 'META_APP_ID not configured' }); return; }
 
+  // Accept token from Authorization header OR ?token= query param
+  let rawToken = (req.headers.authorization ?? '').replace('Bearer ', '').trim();
+  if (!rawToken && req.query.token) rawToken = req.query.token as string;
+
+  let userId: string | undefined;
+  if (rawToken) {
+    try {
+      const decoded = jwt.verify(rawToken, process.env.JWT_SECRET!) as Record<string, unknown>;
+      userId = (decoded.id ?? decoded.userId ?? decoded.sub) as string | undefined;
+    } catch {
+      res.status(401).json({ error: 'invalid token' }); return;
+    }
+  } else {
+    res.status(401).json({ error: 'unauthorised' }); return;
+  }
+
   const redirectUri = 'https://web-production-311da.up.railway.app/api/social/oauth/facebook/callback';
   const scope = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management';
-  const state = Buffer.from(JSON.stringify({ userId: req.user?.id, ts: Date.now() })).toString('base64url');
+  const state = Buffer.from(JSON.stringify({ userId, ts: Date.now() })).toString('base64url');
 
   const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}&response_type=code`;
   res.redirect(oauthUrl);
 });
 
 // GET /api/social/oauth/facebook/callback
-router.get('/oauth/facebook/callback', async (req: Request, res: Response) => {
+// No auth required — Facebook redirects here directly
+oauthRouter.get('/facebook/callback', async (req: Request, res: Response) => {
   const code = req.query.code as string;
   const state = req.query.state as string;
 
@@ -537,5 +564,3 @@ router.get('/oauth/facebook/callback', async (req: Request, res: Response) => {
     res.redirect('/crm/social?error=callback_failed');
   }
 });
-
-export default router;

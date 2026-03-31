@@ -33,7 +33,7 @@ import billingRouter from './routes/billing';
 import permissionsRouter from './routes/permissions';
 import adsRouter from './routes/ads';
 import reportsRouter from './routes/reports';
-import socialRouter from './routes/social';
+import socialRouter, { oauthRouter as socialOAuthRouter } from './routes/social';
 import inboxRouter, { setSocketIO } from './routes/inbox';
 import discoverRouter from './routes/discover';
 import marketingRouter from './routes/marketing';
@@ -125,6 +125,7 @@ app.use('/api/billing', requireAuth, billingRouter);
 app.use('/api/permissions', requireAuth, permissionsRouter);
 app.use('/api/ads', requireAuth, adsRouter);
 app.use('/api/reports', requireAuth, reportsRouter);
+app.use('/api/social/oauth', socialOAuthRouter); // no auth — browser redirects can't send headers
 app.use('/api/social', requireAuth, socialRouter);
 app.use('/api/inbox', requireAuth, inboxRouter);
 app.use('/api/outreach/discover', requireAuth, discoverRouter);

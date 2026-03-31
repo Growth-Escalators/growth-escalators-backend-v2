@@ -449,11 +449,12 @@ function AccountsTab({ accounts, onDelete, onAdd }) {
           </div>
           <h3 className="text-lg font-bold text-slate-900 mb-1">Connect Your Facebook Pages</h3>
           <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">Link your Facebook Pages and Instagram accounts to post directly from the CRM.</p>
-          <a href="/api/social/oauth/facebook/start"
-            className="inline-flex items-center gap-2 px-6 py-3 text-white font-semibold rounded-xl text-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#1877F2' }}>
+          <button
+            onClick={() => { const t = localStorage.getItem('ge_crm_token'); window.location.href = `/api/social/oauth/facebook/start?token=${t}`; }}
+            className="inline-flex items-center gap-2 px-6 py-3 text-white font-semibold rounded-xl text-sm hover:opacity-90 transition-opacity cursor-pointer" style={{ backgroundColor: '#1877F2' }}>
             <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"/></svg>
             Connect with Facebook
-          </a>
+          </button>
           <div className="mt-4">
             <button onClick={() => setShowManual(s => !s)} className="text-xs text-slate-400 hover:text-slate-600 underline">
               Add page manually instead
@@ -464,11 +465,12 @@ function AccountsTab({ accounts, onDelete, onAdd }) {
         <div className="flex items-center justify-between">
           <p className="text-sm text-slate-500">{accounts.length} account{accounts.length !== 1 ? 's' : ''} connected</p>
           <div className="flex gap-2">
-            <a href="/api/social/oauth/facebook/start"
-              className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: '#1877F2' }}>
+            <button
+              onClick={() => { const t = localStorage.getItem('ge_crm_token'); window.location.href = `/api/social/oauth/facebook/start?token=${t}`; }}
+              className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm hover:opacity-90 transition-opacity cursor-pointer" style={{ backgroundColor: '#1877F2' }}>
               <Plus className="w-4 h-4" />
               Connect More Pages
-            </a>
+            </button>
             <button onClick={() => setShowManual(s => !s)} className="text-xs text-slate-400 hover:text-slate-600 px-3 py-2">
               Manual
             </button>
