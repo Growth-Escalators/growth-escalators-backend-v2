@@ -48,6 +48,8 @@ import imapRepliesRouter from './routes/imapReplies';
 import { ensureProcessedRepliesTable } from './services/imapService';
 import funnelRouter, { ensureFunnelWaitlistTable } from './routes/funnel';
 import { ensurePipelineContactsTable, ensureOutreachPipelines } from './services/pipelineService';
+import outreachLeadsRouter from './routes/outreachLeads';
+import { ensureOutreachLeadsTable } from './services/outreachLeadsService';
 // Workers and cron jobs now run via src/worker.ts (see railway.json)
 import analyticsRouter from './routes/analytics';
 import { requireAuth } from './middleware/auth';
@@ -147,6 +149,7 @@ app.use('/api/seo-workflows', requireAuth, seoWorkflowsRouter);
 app.use('/api/intelligence', requireAuth, intelligenceRouter);
 app.use('/api/growth-os', requireAuth, growthOSRouter);
 app.use('/api/outreach/imap', imapRepliesRouter);
+app.use('/api/outreach/leads', outreachLeadsRouter);
 app.use('/api/funnel', funnelRouter);
 
 // ---------------------------------------------------------------------------
@@ -284,6 +287,8 @@ async function startServer() {
   ensurePipelineContactsTable().catch(e => console.error('[startup] Pipeline contacts table bootstrap failed:', e));
   // Bootstrap Agency Owners and Freelancer pipelines
   ensureOutreachPipelines().catch(e => console.error('[startup] Outreach pipelines bootstrap failed:', e));
+  // Bootstrap outreach_leads table for WF-01 enrichment pipeline
+  ensureOutreachLeadsTable().catch(e => console.error('[startup] outreach_leads table bootstrap failed:', e));
 
   httpServer.listen(PORT, () => {
     console.log(`Growth Escalators backend running on port ${PORT}`);

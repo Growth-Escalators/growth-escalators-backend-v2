@@ -1,0 +1,284 @@
+/**
+ * /api/outreach/leads
+ *
+ * Internal endpoints protected by OUTREACH_INTERNAL_SECRET (no JWT required).
+ * Used by n8n WF-06 (Auto Discovery) and manual CLI discovery runs.
+ *
+ * POST /api/outreach/leads/run-discovery
+ *   Runs a Google Places search, auto-imports qualified leads (fitScore ≥ minFitScore)
+ *   into outreach_leads with status='New', then returns a summary.
+ *
+ * POST /api/outreach/leads/insert
+ *   Inserts a single lead directly (used for manual/testing imports).
+ *
+ * GET /api/outreach/leads/stats
+ *   Returns pipeline stats grouped by status.
+ */
+
+import { Router, type Request, type Response } from 'express';
+import logger from '../utils/logger';
+import { insertOutreachLead } from '../services/outreachLeadsService';
+import { pool } from '../db/index';
+
+const router = Router();
+
+// ---------------------------------------------------------------------------
+// Internal-secret auth (same pattern as imapReplies.ts)
+// ---------------------------------------------------------------------------
+function checkInternalSecret(req: Request, res: Response): boolean {
+  const secret = process.env.OUTREACH_INTERNAL_SECRET;
+  if (!secret) {
+    logger.warn('[outreach-leads] OUTREACH_INTERNAL_SECRET not set — request allowed without auth');
+    return true;
+  }
+  const provided = req.headers['x-internal-secret'];
+  if (provided !== secret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers (mirrors discover.ts — kept local to avoid circular deps)
+// ---------------------------------------------------------------------------
+const PLACES_API_BASE = 'https://maps.googleapis.com/maps/api/place';
+const COST_TEXT_SEARCH  = 0.032;
+const COST_PLACE_DETAILS = 0.003;
+
+const RADIUS_MAP: Record<string, number> = {
+  '10km': 10000, '25km': 25000, '50km': 50000, '100km': 100000, 'city-wide': 50000,
+};
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchJson(url: string): Promise<Record<string, unknown>> {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} from Places API`);
+  return resp.json() as Promise<Record<string, unknown>>;
+}
+
+function computeFitScore(place: {
+  website?: string; phone?: string; rating?: number; reviewCount?: number; types?: string[];
+}): number {
+  let score = 0;
+  if (place.website) score += 25;
+  if (place.phone)   score += 15;
+  const rating = place.rating ?? 0;
+  if (rating >= 4.5) score += 25;
+  else if (rating >= 4.0) score += 20;
+  else if (rating >= 3.5) score += 12;
+  else if (rating > 0)    score += 5;
+  const reviews = place.reviewCount ?? 0;
+  if (reviews >= 50) score += 20;
+  else if (reviews >= 20) score += 15;
+  else if (reviews >= 10) score += 10;
+  else if (reviews >= 5)  score += 5;
+  const marketingTypes = ['marketing','advertising','agency','digital','media','design','consulting','seo','social','branding'];
+  const typeStr = (place.types ?? []).join(' ').toLowerCase();
+  if (marketingTypes.some((t) => typeStr.includes(t))) score += 15;
+  return Math.min(100, score);
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/outreach/leads/run-discovery
+// ---------------------------------------------------------------------------
+router.post('/run-discovery', async (req: Request, res: Response) => {
+  if (!checkInternalSecret(req, res)) return;
+
+  const {
+    query,
+    location,
+    country = 'UK',
+    radius = '10km',
+    maxResults = 20,
+    minFitScore = 70,
+  } = req.body as {
+    query: string;
+    location: string;
+    country?: string;
+    radius?: string;
+    maxResults?: number;
+    minFitScore?: number;
+  };
+
+  if (!query || !location) {
+    return res.status(400).json({ error: 'query and location are required' });
+  }
+
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'GOOGLE_PLACES_API_KEY not set' });
+  }
+
+  const radiusMeters = RADIUS_MAP[radius] ?? 10000;
+  const limit = Math.min(Number(maxResults) || 20, 60);
+  const minScore = Number(minFitScore) || 70;
+
+  logger.info({ query, location, country, radius, limit, minScore }, '[run-discovery] starting');
+
+  try {
+    // Phase 1: Text Search
+    const fullQuery = encodeURIComponent(`${query} ${location}`);
+    const textSearchUrl = `${PLACES_API_BASE}/textsearch/json?query=${fullQuery}&radius=${radiusMeters}&key=${apiKey}`;
+
+    let totalApiCalls = 0;
+    let totalCostUsd = 0;
+
+    const rawPlaces: Array<{
+      place_id: string;
+      name: string;
+      formatted_address?: string;
+      rating?: number;
+      user_ratings_total?: number;
+      types?: string[];
+    }> = [];
+
+    let nextPageToken: string | undefined;
+    let pagesFetched = 0;
+    const maxPages = Math.ceil(limit / 20);
+
+    do {
+      const url = nextPageToken
+        ? `${PLACES_API_BASE}/textsearch/json?pagetoken=${nextPageToken}&key=${apiKey}`
+        : textSearchUrl;
+      const data = await fetchJson(url);
+      totalApiCalls++;
+      totalCostUsd += COST_TEXT_SEARCH;
+      const results = (data.results as typeof rawPlaces) ?? [];
+      rawPlaces.push(...results);
+      nextPageToken = data.next_page_token as string | undefined;
+      pagesFetched++;
+      if (nextPageToken && rawPlaces.length < limit && pagesFetched < maxPages) {
+        await sleep(2000);
+      } else {
+        nextPageToken = undefined;
+      }
+    } while (nextPageToken);
+
+    const placesToProcess = rawPlaces.slice(0, limit);
+
+    // Phase 2: Place Details + import
+    const inserted: string[] = [];
+    const skipped: string[] = [];
+    const lowScore: string[] = [];
+
+    for (const place of placesToProcess) {
+      let website: string | undefined;
+      let phone: string | undefined;
+
+      try {
+        const detailUrl =
+          `${PLACES_API_BASE}/details/json?place_id=${place.place_id}` +
+          `&fields=website,formatted_phone_number&key=${apiKey}`;
+        const detail = await fetchJson(detailUrl);
+        totalApiCalls++;
+        totalCostUsd += COST_PLACE_DETAILS;
+        const result = detail.result as Record<string, string> | undefined;
+        website = result?.website;
+        phone = result?.formatted_phone_number;
+      } catch {
+        // non-critical
+      }
+
+      const fitScore = computeFitScore({
+        website, phone,
+        rating: place.rating,
+        reviewCount: place.user_ratings_total,
+        types: place.types,
+      });
+
+      if (fitScore < minScore) {
+        lowScore.push(place.name);
+        continue;
+      }
+
+      const result = await insertOutreachLead({
+        company: place.name,
+        phone:   phone ?? null,
+        websiteUrl: website ?? null,
+        address: place.formatted_address ?? null,
+        country,
+        fitScore,
+        sourceDetail: `${query} — ${location}, ${country}`,
+      });
+
+      if (result.inserted) {
+        inserted.push(place.name);
+      } else {
+        skipped.push(place.name);
+      }
+    }
+
+    logger.info({ query, location, inserted: inserted.length, skipped: skipped.length, lowScore: lowScore.length, totalApiCalls, totalCostUsd }, '[run-discovery] done');
+
+    return res.json({
+      query,
+      location,
+      country,
+      totalFound: placesToProcess.length,
+      qualifiedCount: inserted.length + skipped.length,
+      inserted: inserted.length,
+      skipped_duplicates: skipped.length,
+      below_threshold: lowScore.length,
+      apiCallsUsed: totalApiCalls,
+      costUsd: Math.round(totalCostUsd * 10000) / 10000,
+      inserted_companies: inserted,
+    });
+  } catch (err) {
+    logger.error({ err }, '[run-discovery] error');
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/outreach/leads/insert — manual single-lead insert
+// ---------------------------------------------------------------------------
+router.post('/insert', async (req: Request, res: Response) => {
+  if (!checkInternalSecret(req, res)) return;
+
+  const { company, firstName, phone, websiteUrl, address, country, fitScore, sourceDetail } = req.body as {
+    company: string;
+    firstName?: string;
+    phone?: string;
+    websiteUrl?: string;
+    address?: string;
+    country?: string;
+    fitScore?: number;
+    sourceDetail?: string;
+  };
+
+  if (!company) {
+    return res.status(400).json({ error: 'company is required' });
+  }
+
+  try {
+    const result = await insertOutreachLead({ company, firstName, phone, websiteUrl, address, country, fitScore, sourceDetail });
+    return res.json(result);
+  } catch (err) {
+    logger.error({ err }, '[outreach-leads] insert error');
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/outreach/leads/stats — pipeline counts by status
+// ---------------------------------------------------------------------------
+router.get('/stats', async (req: Request, res: Response) => {
+  if (!checkInternalSecret(req, res)) return;
+
+  try {
+    const result = await pool.query(
+      `SELECT status, COUNT(*)::int AS count FROM outreach_leads GROUP BY status ORDER BY count DESC`,
+    );
+    const total = result.rows.reduce((a: number, r: { count: number }) => a + r.count, 0) as number;
+    return res.json({ total, by_status: result.rows });
+  } catch (err) {
+    logger.error({ err }, '[outreach-leads] stats error');
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+export default router;
