@@ -1,4 +1,4 @@
-import { sendSlackMessage } from './slackService';
+import { sendSlackMessage, sendSlackDM } from './slackService';
 import logger from '../utils/logger';
 import { SLACK_SOD_EOD_CHANNEL, SLACK_JATIN } from '../config/constants';
 import type { Analysis } from './intelligenceAnalyzer';
@@ -93,12 +93,16 @@ export async function deliverDailyIntelligence(analysis: Analysis, data: AgencyD
 
   try {
     await sendSlackMessage(SLACK_SOD_EOD_CHANNEL, msg);
-    logger.info(`[intelligence] Coaching report delivered. Score: ${analysis.scores.overall}`);
+    logger.info(`[intelligence] Coaching report delivered to channel. Score: ${analysis.scores.overall}`);
   } catch (e) {
-    logger.error('[intelligence] Slack delivery failed:', e);
-    try {
-      await sendSlackMessage(SLACK_JATIN, `🧠 Coaching report ready (channel delivery failed). Score: ${analysis.scores.overall}/100. Check /crm/intelligence`);
-    } catch { /* ignore */ }
-    throw e;
+    logger.error('[intelligence] Slack channel delivery failed:', e);
+  }
+
+  // Always DM Jatin the full coaching report
+  try {
+    await sendSlackDM(SLACK_JATIN, msg);
+    logger.info(`[intelligence] Coaching report DM sent to Jatin`);
+  } catch (e) {
+    logger.error('[intelligence] Jatin DM failed:', e);
   }
 }
