@@ -15,7 +15,7 @@ import { checkSpendAlerts } from './services/spendAlertService';
 import { collectDailyData } from './services/intelligenceDataCollector';
 import { analyzeWithClaude } from './services/intelligenceAnalyzer';
 import { deliverDailyIntelligence } from './services/intelligenceDelivery';
-import { SLACK_SALES_BD_CHANNEL, SLACK_JATIN, SLACK_SAKCHAM, SLACK_PERF_MARKETING_CHANNEL, DEFAULT_TENANT_SLUG } from './config/constants';
+import { SLACK_SALES_BD_CHANNEL, SLACK_JATIN, SLACK_SAKCHAM, SLACK_PERF_MARKETING_CHANNEL, SLACK_SEO_CHANNEL, DEFAULT_TENANT_SLUG } from './config/constants';
 
 console.log('[worker] Worker process started');
 
@@ -152,35 +152,35 @@ cron.schedule('45 3 * * *', async () => {
     const { sendSlackMessage } = await import('./services/slackService');
     const health = await (await import('./services/intelligenceDataCollector')).collectSEOWorkflowHealth();
 
-    // If n8n is down — immediate DM to Jatin
+    // If n8n is down — alert SEO channel + DM Jatin
     if (!health.n8nAlive) {
-      await sendSlackMessage(SLACK_JATIN,
-        '🚨 *CRITICAL: n8n is DOWN*\n' +
+      const downMsg = '🚨 *CRITICAL: n8n is DOWN*\n' +
         'All 12 SEO workflows are not running.\n' +
         'Check: https://primary-production-6c6f5.up.railway.app\n' +
-        'Railway dashboard → GE-Backend-Server → Primary service'
-      );
+        'Railway dashboard → GE-Backend-Server → Primary service';
+      await sendSlackMessage(SLACK_SEO_CHANNEL, downMsg);
+      await sendSlackMessage(SLACK_JATIN, downMsg);
     }
 
-    // If any critical workflow broken — DM Jatin
+    // If any critical workflow broken — alert SEO channel + DM Jatin
     if (health.brokenCritical.length > 0) {
       const msg = health.brokenCritical.map(wf =>
         `• ${wf.name} — last ran ${wf.daysSince === 999 ? 'NEVER' : `${wf.daysSince} days ago`}`
       ).join('\n');
-      await sendSlackMessage(SLACK_JATIN,
-        `⚠️ *SEO Workflow Alert*\n\n${health.brokenCritical.length} critical workflow(s) overdue:\n${msg}\n\n` +
+      const alertMsg = `⚠️ *SEO Workflow Alert*\n\n${health.brokenCritical.length} critical workflow(s) overdue:\n${msg}\n\n` +
         `Fix: /crm/seo → Workflows → Run Now\n` +
-        `Or check n8n directly: https://primary-production-6c6f5.up.railway.app`
-      );
+        `Or check n8n directly: https://primary-production-6c6f5.up.railway.app`;
+      await sendSlackMessage(SLACK_SEO_CHANNEL, alertMsg);
+      await sendSlackMessage(SLACK_JATIN, alertMsg);
     }
 
-    // Post summary to #performance-marketing if any issues
+    // Post summary to #seo channel if any issues
     if (!health.allHealthy) {
       const overdueLines = health.workflows
         .filter(w => !w.healthy)
         .map(w => `${w.critical ? '🔴' : '🟡'} ${w.name} — ${w.daysSince === 999 ? 'never run' : `${w.daysSince}d overdue`}`)
         .join('\n');
-      await sendSlackMessage(SLACK_PERF_MARKETING_CHANNEL,
+      await sendSlackMessage(SLACK_SEO_CHANNEL,
         `⚙️ *SEO Workflow Health Check*\n` +
         `Healthy: ${health.healthyCount}/${health.totalCount}\n` +
         `n8n: ${health.n8nAlive ? '🟢 Online' : '🔴 Offline'}\n\n${overdueLines}`
@@ -214,6 +214,96 @@ cron.schedule('30 2 * * *', async () => {
   }
 }, { timezone: 'UTC' });
 console.log('[cron] Growth OS health scores scheduled — daily 8:00 AM IST');
+
+// ---------------------------------------------------------------------------
+// Growth OS — Daily ROAS Report to #performance-marketing — 8:15 AM IST (2:45 UTC)
+// ---------------------------------------------------------------------------
+cron.schedule('45 2 * * *', async () => {
+  console.log('[CRON] Running daily ROAS report...');
+  try {
+    const { sendSlackMessage } = await import('./services/slackService');
+    const { getActiveGrowthOSClients } = await import('./services/growthOSSetup');
+    const clients = await getActiveGrowthOSClients();
+
+    if (clients.length === 0) { console.log('[CRON] ROAS report: no active clients'); return; }
+
+    const dateStr = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+    let msg = `📊 *Daily ROAS Report — ${dateStr}*\n\n`;
+
+    const token = process.env.META_ADS_TOKEN;
+
+    for (const client of clients) {
+      try {
+        let roas = 0, totalSpend = 0, bestCampaign = '', bestRoas = 0, activeCampaigns = 0, biggestIssue = '';
+
+        if (token) {
+          const url = `https://graph.facebook.com/v19.0/${client.ad_account_id}/campaigns?fields=name,status,insights.date_preset(last_7d){spend,actions,impressions,clicks}&access_token=${token}&limit=20`;
+          const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          if (res.ok) {
+            const data = await res.json() as { data?: Array<Record<string, unknown>> };
+            const campaigns = (data.data ?? []).filter((c: Record<string, unknown>) => c.status === 'ACTIVE');
+            activeCampaigns = campaigns.length;
+
+            let totalPurchaseValue = 0;
+            for (const camp of campaigns) {
+              const ins = camp.insights as Record<string, unknown> | undefined;
+              const rows = (ins?.data as Array<Record<string, unknown>> | undefined) ?? [];
+              let campSpend = 0, campPurchaseValue = 0;
+              for (const row of rows) {
+                campSpend += parseFloat(String(row.spend ?? 0));
+                totalSpend += parseFloat(String(row.spend ?? 0));
+                const actions = (row.actions as Array<{ action_type: string; value: string }> | undefined) ?? [];
+                for (const a of actions) {
+                  if (a.action_type === 'purchase' || a.action_type === 'omni_purchase') {
+                    campPurchaseValue += parseFloat(a.value ?? '0');
+                    totalPurchaseValue += parseFloat(a.value ?? '0');
+                  }
+                }
+              }
+              const campRoas = campSpend > 0 ? campPurchaseValue / campSpend : 0;
+              if (campRoas > bestRoas) {
+                bestRoas = campRoas;
+                bestCampaign = camp.name as string;
+              }
+            }
+            roas = totalSpend > 0 ? totalPurchaseValue / totalSpend : 0;
+
+            if (activeCampaigns === 0) biggestIssue = 'No active campaigns running';
+            else if (roas < client.target_roas * 0.6) biggestIssue = `ROAS critically low at ${roas.toFixed(2)}x`;
+            else if (totalSpend === 0) biggestIssue = 'Zero spend this period';
+          } else {
+            biggestIssue = `Meta API error (${res.status})`;
+          }
+        } else {
+          biggestIssue = 'META_ADS_TOKEN not configured';
+        }
+
+        const target = client.target_roas;
+        let statusEmoji: string;
+        if (roas >= target) statusEmoji = '✅ Above target';
+        else if (roas >= target * 0.8) statusEmoji = '⚠️ At target';
+        else statusEmoji = '🔴 Below target';
+
+        msg += `*${client.client_name}*\n`;
+        msg += `   ROAS: *${roas.toFixed(2)}x* (target: ${target}x) — ${statusEmoji}\n`;
+        if (totalSpend > 0) msg += `   Spend (7d): ₹${Math.round(totalSpend).toLocaleString('en-IN')} · ${activeCampaigns} active campaign${activeCampaigns !== 1 ? 's' : ''}\n`;
+        if (bestCampaign && bestRoas > 0) msg += `   💡 Best: "${bestCampaign}" at ${bestRoas.toFixed(2)}x ROAS\n`;
+        if (biggestIssue) msg += `   ⚠️ ${biggestIssue}\n`;
+        msg += '\n';
+      } catch (e) {
+        msg += `*${client.client_name}*\n   ❌ Data fetch failed: ${e instanceof Error ? e.message : String(e)}\n\n`;
+      }
+    }
+
+    msg += `_Scores refresh daily at 8 AM · Full dashboard: crm.growthescalators.com/crm/growth-os_`;
+
+    await sendSlackMessage(SLACK_PERF_MARKETING_CHANNEL, msg);
+    console.log('[CRON] Daily ROAS report sent to #performance-marketing');
+  } catch (e) {
+    console.error('[CRON] Daily ROAS report failed:', e);
+  }
+}, { timezone: 'UTC' });
+console.log('[cron] Daily ROAS report scheduled — 8:15 AM IST');
 
 // Growth OS — Money on Table — Every Monday 8:30 AM IST (3:00 UTC)
 cron.schedule('0 3 * * 1', async () => {
