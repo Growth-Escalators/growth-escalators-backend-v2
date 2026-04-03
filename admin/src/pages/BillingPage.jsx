@@ -246,8 +246,8 @@ function InvoiceModal({ invoice, clients, onClose, onSaved }) {
 
   const [form, setForm] = useState(isEdit ? {
     clientId: invoice.client_id || '',
-    invoiceDate: invoice.invoice_date ? invoice.invoice_date.split('T')[0] : today,
-    dueDate: invoice.due_date ? invoice.due_date.split('T')[0] : dueStr,
+    invoiceDate: invoice.invoice_date ? new Date(invoice.invoice_date).toISOString().split('T')[0] : today,
+    dueDate: invoice.due_date ? new Date(invoice.due_date).toISOString().split('T')[0] : dueStr,
     invoiceType: invoice.invoice_type || 'gst',
     taxType: invoice.tax_type || '',
     notes: invoice.notes || '',
@@ -656,6 +656,14 @@ export default function BillingPage() {
     } catch (e) { alert(e.message); }
   }
 
+  async function handleDelete(id) {
+    if (!confirm('Permanently delete this cancelled invoice? This cannot be undone.')) return;
+    try {
+      await apiFetch(`/api/billing/invoices/${id}`, { method: 'DELETE' });
+      fetchData();
+    } catch (e) { alert(e.message); }
+  }
+
   async function handleDeleteClient(id) {
     if (!confirm('Deactivate this client?')) return;
     try {
@@ -765,7 +773,7 @@ export default function BillingPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
-                  {['', 'draft', 'sent', 'paid', 'partially_paid', 'overdue'].map(s => (
+                  {['', 'draft', 'sent', 'paid', 'partially_paid', 'overdue', 'cancelled'].map(s => (
                     <button key={s} onClick={() => setFilterStatus(s)}
                       className={`px-3 py-1.5 text-xs rounded-full font-medium transition-colors ${
                         filterStatus === s ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -850,14 +858,21 @@ export default function BillingPage() {
                                   </svg>
                                 </button>
                               )}
-                              {inv.status !== 'cancelled' && inv.status !== 'paid' && (
+                              {inv.status === 'cancelled' ? (
+                                <button onClick={() => handleDelete(inv.id)}
+                                  className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded" title="Delete permanently">
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              ) : inv.status !== 'paid' ? (
                                 <button onClick={() => handleCancel(inv.id)}
                                   className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded" title="Cancel">
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                   </svg>
                                 </button>
-                              )}
+                              ) : null}
                             </div>
                           </td>
                         </tr>
