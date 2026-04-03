@@ -44,6 +44,8 @@ import seoWorkflowsRouter from './routes/seoWorkflows';
 import intelligenceRouter from './routes/intelligence';
 import growthOSRouter from './routes/growthOS';
 import { ensureGrowthOSTables } from './services/growthOSSetup';
+import imapRepliesRouter from './routes/imapReplies';
+import { ensureProcessedRepliesTable } from './services/imapService';
 // Workers and cron jobs now run via src/worker.ts (see railway.json)
 import analyticsRouter from './routes/analytics';
 import { requireAuth } from './middleware/auth';
@@ -142,6 +144,7 @@ app.use('/api/seo', requireAuth, seoRouter);
 app.use('/api/seo-workflows', requireAuth, seoWorkflowsRouter);
 app.use('/api/intelligence', requireAuth, intelligenceRouter);
 app.use('/api/growth-os', requireAuth, growthOSRouter);
+app.use('/api/outreach/imap', imapRepliesRouter);
 
 // ---------------------------------------------------------------------------
 // Static frontend — hostname-based routing
@@ -270,6 +273,8 @@ async function startServer() {
 
   // Bootstrap Growth OS tables
   ensureGrowthOSTables().catch(e => console.error('[startup] Growth OS table bootstrap failed:', e));
+  // Bootstrap IMAP reply dedup table
+  ensureProcessedRepliesTable().catch(e => console.error('[startup] IMAP processed_replies table bootstrap failed:', e));
 
   httpServer.listen(PORT, () => {
     console.log(`Growth Escalators backend running on port ${PORT}`);
