@@ -300,7 +300,7 @@ router.patch('/invoices/:id', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /api/billing/invoices/:id — cancel
+// DELETE /api/billing/invoices/:id — cancel or hard-delete if already cancelled
 // ---------------------------------------------------------------------------
 router.delete('/invoices/:id', async (req: Request, res: Response) => {
   const tenantId = req.user!.tenantId;
@@ -310,10 +310,23 @@ router.delete('/invoices/:id', async (req: Request, res: Response) => {
   if (!p?.billingEdit && !p?.isOwner) { res.status(403).json({ error: 'insufficient permissions' }); return; }
 
   try {
-    await db.update(invoices)
-      .set({ status: 'cancelled', updatedAt: new Date() })
-      .where(and(eq(invoices.id, invoiceId), eq(invoices.tenantId, tenantId)));
-    res.json({ success: true });
+    const [existing] = await db.select().from(invoices)
+      .where(and(eq(invoices.id, invoiceId), eq(invoices.tenantId, tenantId)))
+      .limit(1);
+    if (!existing) { res.status(404).json({ error: 'invoice not found' }); return; }
+
+    if (existing.status === 'cancelled') {
+      // Hard-delete cancelled invoice + its line items
+      await db.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoiceId));
+      await db.delete(invoices).where(eq(invoices.id, invoiceId));
+      res.json({ success: true, deleted: true });
+    } else {
+      // Soft-cancel
+      await db.update(invoices)
+        .set({ status: 'cancelled', updatedAt: new Date() })
+        .where(eq(invoices.id, invoiceId));
+      res.json({ success: true });
+    }
   } catch (e: unknown) {
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
@@ -515,6 +528,7 @@ router.get('/mrr', async (req: Request, res: Response) => {
     const outstandingResult = await db.execute(sql`
       SELECT SUM(amount_due) as total, COUNT(*) as count FROM invoices
       WHERE tenant_id = ${tenantId} AND status IN ('sent', 'partially_paid')
+        AND status != 'cancelled'
     `);
 
     const overdueResult = await db.execute(sql`
@@ -575,6 +589,7 @@ router.get('/stats', async (req: Request, res: Response) => {
     const outstandingResult = await db.execute(sql`
       SELECT SUM(amount_due) as total FROM invoices
       WHERE tenant_id = ${tenantId} AND status IN ('sent', 'partially_paid', 'overdue')
+        AND status != 'cancelled'
     `);
 
     const overdueResult = await db.execute(sql`
