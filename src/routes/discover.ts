@@ -11,6 +11,7 @@ import {
   tenants,
 } from '../db/schema';
 import ExcelJS from 'exceljs';
+import { insertOutreachLead } from '../services/outreachLeadsService';
 
 const router = Router();
 
@@ -523,6 +524,16 @@ router.post('/import', async (req: Request, res: Response) => {
         .update(discoveryResults)
         .set({ imported: true, importedContactId: newContact.id })
         .where(eq(discoveryResults.id, row.id));
+
+      // Also insert into outreach_leads for WF-01 enrichment
+      insertOutreachLead({
+        company: row.companyName,
+        phone: row.phoneNumber ?? null,
+        websiteUrl: row.websiteUrl ?? null,
+        address: row.address ?? null,
+        fitScore: row.fitScore ?? 0,
+        sourceDetail: `discovery import — ${row.address ?? ''}`,
+      }).catch((e) => logger.warn({ e }, '[discover] outreach_leads insert failed (non-fatal)'));
 
       imported.push(row.id);
     }
