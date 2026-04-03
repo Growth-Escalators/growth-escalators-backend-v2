@@ -35,7 +35,12 @@ function fmtUpcoming(tasks: Task[]): string {
   return tasks.map(t => `  • ${t.name}${t.listName ? ` — ${t.listName}` : ''} _(due ${t.dueDateFormatted})_`).join('\n');
 }
 function fmtCompleted(tasks: Task[]): string {
-  return tasks.map(t => `✓ ${t.name}`).join('\n');
+  return tasks.map(t => {
+    let line = `✓ ${t.name}`;
+    if (t.listName) line += ` — _${t.listName}_`;
+    if (t.daysOverdue > 0) line += ` ⚠️ _was ${t.daysOverdue}d overdue_`;
+    return line;
+  }).join('\n');
 }
 function fmtOpen(tasks: Task[]): string {
   return tasks.map(t => {
@@ -127,12 +132,13 @@ function buildTaskSection(r: MemberResult): string {
 // -----------------------------------------------------------------------
 // EOD Summary
 // -----------------------------------------------------------------------
+type EODResult = { member: typeof TEAM[0]; completed: Task[]; openTasks: Task[]; overdue: Task[] };
+
 export async function sendEODSummary(): Promise<{ sent: number; errors: string[] }> {
   console.log('[EOD] starting summary…');
   const errors: string[] = [];
   const dateStr = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  type EODResult = { member: typeof TEAM[0]; completed: Task[]; openTasks: Task[]; overdue: Task[] };
   const results: EODResult[] = await Promise.all(
     TEAM.map(async (m) => {
       try {
@@ -175,18 +181,137 @@ export async function sendEODSummary(): Promise<{ sent: number; errors: string[]
     await delay(2000);
   }
 
+  // --- Patterns + Improvements (one final message for Jatin & Sakcham) ---
+  try {
+    const patternsMsg = buildPatternsAndImprovements(results, dateStr);
+    if (patternsMsg) {
+      await delay(2000);
+      const ok = await sendSlackMessage(SOD_EOD_CHANNEL, patternsMsg);
+      if (ok) { sent++; console.log('[EOD] sent patterns + improvements'); }
+      else { errors.push('post: patterns'); }
+    }
+  } catch (e) { errors.push(`patterns: ${e}`); }
+
   console.log(`[EOD] complete — sent: ${sent}/${TEAM.length}, errors: ${errors.length}`);
   return { sent, errors };
 }
 
-function buildEODSection(r: { member: typeof TEAM[0]; completed: Task[]; openTasks: Task[] }): string {
+function buildPatternsAndImprovements(results: EODResult[], dateStr: string): string | null {
+  const totalCompleted = results.reduce((s, r) => s + r.completed.length, 0);
+  const totalOverdue = results.reduce((s, r) => s + r.overdue.length, 0);
+  if (totalCompleted === 0 && totalOverdue === 0) return null;
+
+  let msg = `🔍 *Team Patterns & Improvements — ${dateStr}*\n\n`;
+
+  // --- Patterns ---
+  msg += `*📌 Patterns:*\n`;
+  let patternCount = 0;
+
+  // Pattern 1: Who has the most overdue tasks
+  const overdueByMember = results
+    .filter(r => r.overdue.length > 0)
+    .sort((a, b) => b.overdue.length - a.overdue.length);
+  if (overdueByMember.length > 0) {
+    const top = overdueByMember[0];
+    msg += `• <@${top.member.slackId}> has the most overdue tasks (${top.overdue.length})`;
+    const worst = top.overdue.reduce((a, b) => a.daysOverdue > b.daysOverdue ? a : b);
+    if (worst.daysOverdue >= 3) {
+      msg += ` — oldest: _"${worst.name}"_ (${worst.daysOverdue}d)`;
+    }
+    msg += `\n`;
+    patternCount++;
+  }
+
+  // Pattern 2: Which list/category keeps slipping
+  const listSlipCount: Record<string, number> = {};
+  for (const r of results) {
+    for (const t of r.overdue) {
+      const key = t.listName || 'Unassigned list';
+      listSlipCount[key] = (listSlipCount[key] || 0) + 1;
+    }
+  }
+  const slippingLists = Object.entries(listSlipCount)
+    .sort(([, a], [, b]) => b - a)
+    .filter(([, count]) => count >= 2);
+  if (slippingLists.length > 0) {
+    const [listName, count] = slippingLists[0];
+    msg += `• *${listName}* has ${count} overdue tasks across the team — recurring bottleneck\n`;
+    patternCount++;
+  }
+
+  // Pattern 3: Members with 0 completions
+  const zeroDone = results.filter(r => r.completed.length === 0 && r.openTasks.length > 0);
+  if (zeroDone.length > 0) {
+    const names = zeroDone.map(r => `<@${r.member.slackId}>`).join(', ');
+    msg += `• ${names} had open tasks but completed none today\n`;
+    patternCount++;
+  }
+
+  // Pattern 4: Tasks completed that were overdue
+  const lateCompletions = results.reduce((s, r) => s + r.completed.filter(t => t.daysOverdue > 0).length, 0);
+  if (lateCompletions > 0 && totalCompleted > 0) {
+    const pct = Math.round((lateCompletions / totalCompleted) * 100);
+    msg += `• ${lateCompletions} of ${totalCompleted} completed tasks (${pct}%) were overdue at completion\n`;
+    patternCount++;
+  }
+
+  if (patternCount === 0) {
+    msg += `• No concerning patterns today ✅\n`;
+  }
+
+  // --- Improvements ---
+  msg += `\n*💡 Team Improvements:*\n`;
+  const suggestions: string[] = [];
+
+  if (lateCompletions > 0 && totalCompleted > 0 && lateCompletions / totalCompleted > 0.4) {
+    suggestions.push(`Over 40% of today's completions were overdue — consider breaking large tasks into smaller sub-tasks with tighter due dates`);
+  }
+
+  if (zeroDone.length > 0) {
+    suggestions.push(`${zeroDone.map(r => r.member.name).join(' & ')} had zero completions — check if they're blocked or need task reassignment`);
+  }
+
+  if (slippingLists.length > 0) {
+    suggestions.push(`"${slippingLists[0][0]}" keeps slipping — assign a single owner to triage and unblock that list`);
+  }
+
+  if (overdueByMember.length > 0) {
+    const top = overdueByMember[0];
+    if (top.overdue.length >= 3) {
+      suggestions.push(`${top.member.name} is carrying ${top.overdue.length} overdue tasks — do a quick 5-min standup to prioritize or delegate`);
+    }
+  }
+
+  const totalOpen = results.reduce((s, r) => s + r.openTasks.length, 0);
+  if (totalCompleted > 0 && totalOpen > totalCompleted * 3) {
+    suggestions.push(`Team has ${totalOpen} open tasks vs ${totalCompleted} completed today — review backlog for tasks that can be closed or deprioritized`);
+  }
+
+  // Pick top 3 most relevant
+  const picked = suggestions.slice(0, 3);
+  if (picked.length === 0) {
+    picked.push('Solid day — keep the momentum going tomorrow');
+  }
+  for (const s of picked) {
+    msg += `• ${s}\n`;
+  }
+
+  return msg;
+}
+
+function buildEODSection(r: EODResult): string {
   if (r.completed.length === 0) {
     return `📝 *EOD — <@${r.member.slackId}>*\nNo tasks completed today.\nOpen: ${r.openTasks.length} tasks\n_Remember to update ClickUp as you finish work!_`;
   }
   let msg = `✅ *EOD Summary — <@${r.member.slackId}>*\n\n`;
   msg += `*Completed today (${r.completed.length}):*\n${fmtCompleted(r.completed)}\n\n`;
   if (r.openTasks.length > 0) msg += `*Still open (${r.openTasks.length}):*\n${fmtOpen(r.openTasks)}\n\n`;
-  msg += `_${r.completed.length} done · ${r.openTasks.length} carry forward_`;
+  const overdueCompleted = r.completed.filter(t => t.daysOverdue > 0).length;
+  if (overdueCompleted > 0) {
+    msg += `_${r.completed.length} done (${overdueCompleted} were overdue) · ${r.openTasks.length} carry forward_`;
+  } else {
+    msg += `_${r.completed.length} done · ${r.openTasks.length} carry forward_`;
+  }
   return msg;
 }
 
