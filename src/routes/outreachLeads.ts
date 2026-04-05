@@ -444,4 +444,20 @@ router.post('/reset-stuck', async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// POST /api/outreach/leads/enrich-now — manually trigger backend enrichment
+// ---------------------------------------------------------------------------
+router.post('/enrich-now', async (req: Request, res: Response) => {
+  if (!checkInternalSecret(req, res)) return;
+
+  try {
+    const { enrichStuckLeads } = await import('../services/outreachEnrichmentService');
+    const result = await enrichStuckLeads();
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, '[outreach-leads] enrich-now error');
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;
