@@ -482,6 +482,16 @@ cron.schedule('30 14 * * 1-6', () => safeCron('Outreach Daily Digest', async () 
 console.log('[cron] Outreach daily digest scheduled — 8:00 PM IST Mon-Sat');
 
 // ---------------------------------------------------------------------------
+// Outreach: backend enrichment — every 10 minutes
+// Bypasses n8n WF-01 and enriches leads directly from backend
+// ---------------------------------------------------------------------------
+cron.schedule('*/10 * * * *', () => safeCron('Outreach Enrichment', async () => {
+  const { enrichStuckLeads } = await import('./services/outreachEnrichmentService');
+  await enrichStuckLeads();
+}), { timezone: 'UTC' });
+console.log('[cron] Outreach enrichment scheduled — every 10 minutes');
+
+// ---------------------------------------------------------------------------
 // Outreach: reset stuck Enriching leads — every 2 hours
 // Leads stuck in Enriching for >1 hour get reset to New for WF-01 retry
 // ---------------------------------------------------------------------------
