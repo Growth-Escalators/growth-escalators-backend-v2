@@ -159,18 +159,42 @@ export async function fetchCompletedTodayForMember(clickupUserId: string): Promi
   if (!CLICKUP_TOKEN) return [];
 
   const todayS = istTodayStartMs();
+  const todayE = istTodayEndMs();
   const allRaw: RawTask[] = [];
-  let page = 0;
 
+  // Strategy 1: Fetch by date_done (completion date) — most accurate
+  let page = 0;
   while (page < 5) {
     const result = await fetchPage(clickupUserId, page, {
-      'statuses[]': 'complete',
       include_closed: 'true',
-      date_updated_gt: String(todayS),
+      date_done_gt: String(todayS),
+      date_done_lt: String(todayE),
     });
     allRaw.push(...result.tasks);
     if (result.lastPage || result.tasks.length === 0) break;
     page++;
+  }
+
+  // Strategy 2: Also fetch by date_updated as fallback (catches tasks marked done via status change)
+  if (allRaw.length === 0) {
+    page = 0;
+    while (page < 3) {
+      const result = await fetchPage(clickupUserId, page, {
+        include_closed: 'true',
+        date_updated_gt: String(todayS),
+        date_updated_lt: String(todayE),
+      });
+      // Only keep tasks whose status type indicates completion
+      for (const raw of result.tasks) {
+        const st = raw.status?.type?.toLowerCase();
+        const sn = raw.status?.status?.toLowerCase();
+        if (st === 'closed' || st === 'done' || sn === 'complete' || sn === 'closed' || sn === 'done') {
+          if (!allRaw.some(r => r.id === raw.id)) allRaw.push(raw);
+        }
+      }
+      if (result.lastPage || result.tasks.length === 0) break;
+      page++;
+    }
   }
 
   return allRaw.map(parseTask);
