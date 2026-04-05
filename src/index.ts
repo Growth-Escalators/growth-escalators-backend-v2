@@ -291,6 +291,8 @@ async function startServer() {
   ensureOutreachPipelines().catch(e => console.error('[startup] Outreach pipelines bootstrap failed:', e));
   // Bootstrap outreach_leads table for WF-01 enrichment pipeline
   ensureOutreachLeadsTable().catch(e => console.error('[startup] outreach_leads table bootstrap failed:', e));
+  // Bootstrap SEO tables (site_health_metrics, seo_opportunities, seo_alerts_log)
+  import('./services/seoWorkflowHealthService').then(m => m.ensureSeoTables()).catch(e => console.error('[startup] SEO tables bootstrap failed:', e));
 
   httpServer.listen(PORT, () => {
     console.log(`Growth Escalators backend running on port ${PORT}`);
