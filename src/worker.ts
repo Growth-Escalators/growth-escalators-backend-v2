@@ -16,7 +16,7 @@ import { checkSpendAlerts } from './services/spendAlertService';
 import { collectDailyData } from './services/intelligenceDataCollector';
 import { analyzeWithClaude } from './services/intelligenceAnalyzer';
 import { deliverDailyIntelligence } from './services/intelligenceDelivery';
-import { SLACK_SALES_BD_CHANNEL, SLACK_JATIN, SLACK_SAKCHAM, SLACK_PERF_MARKETING_CHANNEL, SLACK_SEO_CHANNEL, SLACK_OUTREACH_CHANNEL, DEFAULT_TENANT_SLUG } from './config/constants';
+import { SLACK_SALES_BD_CHANNEL, SLACK_JATIN, SLACK_SAKCHAM, SLACK_PERF_MARKETING_CHANNEL, SLACK_SEO_CHANNEL, SLACK_OUTREACH_CHANNEL, SLACK_SOD_EOD_CHANNEL, DEFAULT_TENANT_SLUG } from './config/constants';
 
 console.log('[worker] Worker process started');
 
@@ -636,6 +636,52 @@ cron.schedule('30 1 * * *', () => safeCron('Daily Lead Discovery', async () => {
   console.log(`[CRON] Daily discovery: ${totalInserted} new leads`);
 }), { timezone: 'UTC' });
 console.log('[cron] Daily lead discovery scheduled — 7:00 AM IST');
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Weekly Data Cleanup — Sunday 2:00 AM IST (Saturday 20:30 UTC)
+// ---------------------------------------------------------------------------
+cron.schedule('30 20 * * 6', () => safeCron('Weekly Data Cleanup', async () => {
+  let totalDeleted = 0;
+
+  const r1 = await pool.query(`DELETE FROM cron_job_logs WHERE started_at < NOW() - INTERVAL '90 days'`);
+  totalDeleted += r1.rowCount ?? 0;
+
+  const r2 = await pool.query(`DELETE FROM ai_intelligence_reports WHERE created_at < NOW() - INTERVAL '180 days'`);
+  totalDeleted += r2.rowCount ?? 0;
+
+  const r3 = await pool.query(`DELETE FROM outreach_errors WHERE created_at < NOW() - INTERVAL '30 days'`);
+  totalDeleted += r3.rowCount ?? 0;
+
+  console.log(`[CRON] Weekly cleanup: deleted ${totalDeleted} old records`);
+
+  if (totalDeleted > 100) {
+    const { sendSlackMessage } = await import('./services/slackService');
+    await sendSlackMessage(SLACK_SOD_EOD_CHANNEL,
+      `🧹 *Weekly cleanup*: deleted ${totalDeleted} old records. Database stays lean.`,
+    ).catch(() => {});
+  }
+}), { timezone: 'UTC' });
+console.log('[cron] Weekly data cleanup scheduled — Sundays 2:00 AM IST');
+
+// ---------------------------------------------------------------------------
+// Daily Archive — 3:00 AM IST (21:30 UTC previous day)
+// ---------------------------------------------------------------------------
+cron.schedule('30 21 * * *', () => safeCron('Daily Archive', async () => {
+  await pool.query(`CREATE TABLE IF NOT EXISTS outreach_leads_archive (LIKE outreach_leads INCLUDING ALL)`).catch(() => {});
+  const r = await pool.query(`
+    WITH moved AS (
+      DELETE FROM outreach_leads
+      WHERE status = 'Closed' AND updated_at < NOW() - INTERVAL '365 days'
+      RETURNING *
+    )
+    INSERT INTO outreach_leads_archive SELECT * FROM moved
+    RETURNING id
+  `).catch(() => ({ rowCount: 0 }));
+  const archived = r.rowCount ?? 0;
+  if (archived > 0) console.log(`[CRON] Archived ${archived} closed outreach leads`);
+}), { timezone: 'UTC' });
+console.log('[cron] Daily archive scheduled — 3:00 AM IST');
 
 // ---------------------------------------------------------------------------
 // System Health Monitor — every 30 minutes
