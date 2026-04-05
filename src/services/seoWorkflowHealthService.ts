@@ -2,6 +2,54 @@ import { pool } from '../db/index';
 import logger from '../utils/logger';
 
 // ---------------------------------------------------------------------------
+// Ensure SEO tables exist (called on startup)
+// ---------------------------------------------------------------------------
+export async function ensureSeoTables(): Promise<void> {
+  const stmts = [
+    `CREATE TABLE IF NOT EXISTS site_health_metrics (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_name TEXT NOT NULL,
+      pagespeed_mobile NUMERIC,
+      pagespeed_desktop NUMERIC,
+      lcp NUMERIC,
+      fid NUMERIC,
+      cls NUMERIC,
+      broken_links_count INTEGER DEFAULT 0,
+      indexed_pages_count INTEGER DEFAULT 0,
+      crawl_errors_count INTEGER DEFAULT 0,
+      checked_at TIMESTAMP DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS site_health_project_checked_at_idx ON site_health_metrics(project_name, checked_at)`,
+    `CREATE TABLE IF NOT EXISTS seo_opportunities (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_name TEXT NOT NULL,
+      opportunity_type TEXT,
+      description TEXT,
+      estimated_impact TEXT,
+      effort_level TEXT,
+      status TEXT DEFAULT 'open',
+      identified_at TIMESTAMP DEFAULT NOW(),
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS seo_opportunities_project_status_idx ON seo_opportunities(project_name, status)`,
+    `CREATE TABLE IF NOT EXISTS seo_alerts_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_name TEXT NOT NULL,
+      alert_type TEXT,
+      message TEXT,
+      severity TEXT DEFAULT 'info',
+      resolved BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS seo_alerts_log_created_idx ON seo_alerts_log(created_at DESC)`,
+  ];
+  for (const s of stmts) {
+    await pool.query(s).catch(e => logger.warn(`[seo-tables] ${e instanceof Error ? e.message : String(e)}`));
+  }
+  logger.info('[seo-tables] SEO tables bootstrapped');
+}
+
+// ---------------------------------------------------------------------------
 // Workflow definitions — single source of truth shared by route + worker
 // ---------------------------------------------------------------------------
 export const SEO_WORKFLOWS = [
