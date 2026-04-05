@@ -45,21 +45,24 @@ router.get('/health/seo-data', async (_req, res) => {
       await ensureSeoTables();
     } catch { /* non-critical */ }
 
-    const tableConfigs = [
-      { name: 'seo_weekly_metrics', tsCol: 'created_at' },
-      { name: 'keyword_rankings', tsCol: 'created_at' },
-      { name: 'site_health_metrics', tsCol: 'checked_at' },
-      { name: 'backlink_data', tsCol: 'checked_at' },
-      { name: 'seo_opportunities', tsCol: 'created_at' },
-      { name: 'seo_alerts_log', tsCol: 'created_at' },
-    ];
+    const tables = ['seo_weekly_metrics', 'keyword_rankings', 'site_health_metrics', 'backlink_data', 'seo_opportunities', 'seo_alerts_log'];
     const results: Record<string, { count: number; latest: string | null }> = {};
-    for (const tc of tableConfigs) {
+    for (const table of tables) {
       try {
-        const r = await pool.query(`SELECT COUNT(*)::int AS count, MAX(${tc.tsCol})::text AS latest FROM ${tc.name}`);
-        results[tc.name] = { count: (r.rows[0] as { count: number }).count, latest: (r.rows[0] as { latest: string | null }).latest };
+        const countR = await pool.query(`SELECT COUNT(*)::int AS count FROM ${table}`);
+        const count = (countR.rows[0] as { count: number }).count;
+        // Try common timestamp columns
+        let latest: string | null = null;
+        for (const col of ['created_at', 'checked_at', 'identified_at', 'week_start', 'recorded_date']) {
+          try {
+            const r = await pool.query(`SELECT MAX(${col})::text AS latest FROM ${table}`);
+            latest = (r.rows[0] as { latest: string | null }).latest;
+            if (latest) break;
+          } catch { continue; }
+        }
+        results[table] = { count, latest };
       } catch (e) {
-        results[tc.name] = { count: -1, latest: `error: ${e instanceof Error ? e.message.slice(0, 50) : 'unknown'}` };
+        results[table] = { count: -1, latest: `error: ${e instanceof Error ? e.message.slice(0, 50) : 'unknown'}` };
       }
     }
     res.json({ tables: results, checkedAt: new Date().toISOString() });
