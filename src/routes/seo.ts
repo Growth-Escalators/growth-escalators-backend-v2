@@ -23,22 +23,55 @@ const WORKFLOWS = [
 ];
 
 // ---------------------------------------------------------------------------
-// GET /api/seo/overview — summary across all clients
+// GET /api/seo/overview — summary across all clients with week-over-week trend
 // ---------------------------------------------------------------------------
 router.get('/overview', async (_req: Request, res: Response) => {
   try {
+    // Current week and previous week per client for WoW trend
     const result = await db.execute(sql`
+      WITH ranked AS (
+        SELECT
+          client_domain,
+          client_name,
+          week_start,
+          total_clicks,
+          total_impressions,
+          avg_position,
+          total_sessions,
+          ROW_NUMBER() OVER (PARTITION BY client_domain ORDER BY week_start DESC) AS rn
+        FROM seo_weekly_metrics
+      ),
+      current_week AS (
+        SELECT * FROM ranked WHERE rn = 1
+      ),
+      prev_week AS (
+        SELECT * FROM ranked WHERE rn = 2
+      )
       SELECT
-        client_domain,
-        client_name,
-        MAX(week_start)          AS last_updated,
-        SUM(total_clicks)        AS total_clicks,
-        SUM(total_impressions)   AS total_impressions,
-        ROUND(AVG(avg_position)::numeric, 1) AS avg_position,
-        SUM(total_sessions)      AS total_sessions
-      FROM seo_weekly_metrics
-      GROUP BY client_domain, client_name
-      ORDER BY total_clicks DESC
+        c.client_domain,
+        c.client_name,
+        c.week_start                    AS last_updated,
+        c.total_clicks,
+        c.total_impressions,
+        ROUND(c.avg_position::numeric, 1) AS avg_position,
+        c.total_sessions,
+        CASE
+          WHEN c.total_impressions > 0
+          THEN ROUND((c.total_clicks::numeric / c.total_impressions * 100), 2)
+          ELSE 0
+        END AS avg_ctr,
+        p.total_clicks                  AS prev_clicks,
+        p.total_impressions             AS prev_impressions,
+        ROUND(p.avg_position::numeric, 1) AS prev_position,
+        p.total_sessions                AS prev_sessions,
+        CASE
+          WHEN p.total_impressions > 0
+          THEN ROUND((p.total_clicks::numeric / p.total_impressions * 100), 2)
+          ELSE 0
+        END AS prev_ctr
+      FROM current_week c
+      LEFT JOIN prev_week p ON c.client_domain = p.client_domain
+      ORDER BY c.total_clicks DESC
     `);
     res.json({ clients: result.rows });
   } catch (e) {
@@ -187,6 +220,39 @@ router.post('/trigger/:workflowId', async (req: Request, res: Response) => {
   } catch (e) {
     logger.error('[seo] trigger error:', e);
     res.status(500).json({ error: 'Failed to trigger workflow' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/seo/keywords-all — all keywords across all clients
+// ---------------------------------------------------------------------------
+router.get('/keywords-all', async (_req: Request, res: Response) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT keyword, client_domain, current_position AS position, previous_position,
+        current_position - previous_position AS change,
+        search_volume, checked_at
+      FROM keyword_rankings
+      ORDER BY current_position ASC
+      LIMIT 200
+    `);
+    res.json({ keywords: result.rows });
+  } catch (e) {
+    // Try alternate column names
+    try {
+      const result = await db.execute(sql`
+        SELECT keyword, client_domain, position, previous_position,
+          position - previous_position AS change,
+          search_volume, checked_at
+        FROM keyword_rankings
+        ORDER BY position ASC
+        LIMIT 200
+      `);
+      res.json({ keywords: result.rows });
+    } catch (e2) {
+      logger.error('[seo] keywords-all error:', e2);
+      res.status(500).json({ error: 'Failed to fetch keywords' });
+    }
   }
 });
 

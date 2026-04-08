@@ -20,6 +20,7 @@ export async function ensureSeoTables(): Promise<void> {
       checked_at TIMESTAMP DEFAULT NOW()
     )`,
     `CREATE INDEX IF NOT EXISTS site_health_project_checked_at_idx ON site_health_metrics(project_name, checked_at)`,
+    `ALTER TABLE site_health_metrics ADD COLUMN IF NOT EXISTS client_domain TEXT`,
     `CREATE TABLE IF NOT EXISTS seo_opportunities (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       project_name TEXT NOT NULL,

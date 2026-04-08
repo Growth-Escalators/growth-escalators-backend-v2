@@ -1,0 +1,98 @@
+import { pool } from '../db/index';
+import logger from '../utils/logger';
+
+// ---------------------------------------------------------------------------
+// Seed client knowledge base with real brand data
+// ---------------------------------------------------------------------------
+export async function seedClientKnowledgeBase(): Promise<void> {
+  // Ensure table exists
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS client_knowledge_base (
+      id SERIAL PRIMARY KEY,
+      client_domain TEXT UNIQUE NOT NULL,
+      brand_name TEXT,
+      industry TEXT,
+      target_audience TEXT,
+      unique_value_prop TEXT,
+      primary_keywords TEXT,
+      tone_of_voice TEXT,
+      competitors TEXT,
+      content_themes TEXT,
+      cta_style TEXT,
+      ga4_property_id TEXT,
+      gsc_domain TEXT,
+      wordpress_url TEXT,
+      target_monthly_traffic INTEGER,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  const clients = [
+    {
+      client_domain: 'aarohaom.com',
+      brand_name: 'Aaroha Om',
+      industry: 'Ayurvedic wellness, spiritual products',
+      target_audience: 'Health-conscious Indians 25-50, interested in holistic healing',
+      unique_value_prop: 'Authentic ayurvedic formulations with modern accessibility',
+      primary_keywords: 'ayurvedic treatment, wellness products, herbal remedies, spiritual wellness, aarohaom',
+      tone_of_voice: 'Warm, trustworthy, rooted in tradition yet modern',
+      competitors: 'Patanjali, Himalaya, Forest Essentials',
+      content_themes: 'Ayurveda benefits, ingredient spotlights, wellness tips, seasonal health guides',
+      cta_style: "Gentle discovery — 'Explore our range', 'Learn more'",
+      ga4_property_id: '506144010',
+      gsc_domain: 'sc-domain:aarohaom.com',
+      wordpress_url: 'https://aarohaom.com',
+      target_monthly_traffic: 5000,
+    },
+    {
+      client_domain: 'blackpandaenterprises.com',
+      brand_name: 'Black Panda Enterprises',
+      industry: 'B2B consulting — India market entry, Fractional GCC, US healthcare AI',
+      target_audience: 'US/UK companies wanting to enter India, healthcare AI companies, enterprise decision makers',
+      unique_value_prop: 'End-to-end India market entry with fractional GCC setup expertise',
+      primary_keywords: 'India market entry, fractional GCC, global capability centre India, healthcare AI India, business expansion India',
+      tone_of_voice: 'Professional, authoritative, data-driven, enterprise-focused',
+      competitors: 'EY, Deloitte, KPMG',
+      content_themes: 'India market insights, GCC setup guides, regulatory landscape, cost comparison, case studies',
+      cta_style: "High-intent B2B — 'Schedule a consultation', 'Download our guide'",
+      ga4_property_id: '513868257',
+      gsc_domain: 'sc-domain:blackpandaenterprises.com',
+      wordpress_url: 'https://blackpandaenterprises.com',
+      target_monthly_traffic: 2000,
+    },
+    {
+      client_domain: 'ageddentistry.org',
+      brand_name: 'Aged Dentistry',
+      industry: 'Elderly dental care, aged care facility dental services',
+      target_audience: 'Aged care facility managers, families of elderly patients, elderly patients 65+',
+      unique_value_prop: 'Specialized dental care designed specifically for elderly patients and aged care facilities',
+      primary_keywords: 'aged care dentistry, elderly dental care, mobile dentistry aged care, dental care for seniors',
+      tone_of_voice: 'Compassionate, reassuring, professional, accessible',
+      competitors: 'Local dental practices, mobile dental services',
+      content_themes: 'Elderly oral health, dental care in aged care, common senior dental issues, family guides',
+      cta_style: "Comfort-focused — 'Book a visit', 'Talk to our team'",
+      ga4_property_id: '514956819',
+      gsc_domain: 'sc-domain:ageddentistry.org',
+      wordpress_url: 'https://ageddentistry.org',
+      target_monthly_traffic: 1000,
+    },
+  ];
+
+  for (const c of clients) {
+    await pool.query(`
+      INSERT INTO client_knowledge_base (client_domain, brand_name, industry, target_audience, unique_value_prop,
+        primary_keywords, tone_of_voice, competitors, content_themes, cta_style,
+        ga4_property_id, gsc_domain, wordpress_url, target_monthly_traffic)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      ON CONFLICT (client_domain) DO UPDATE SET
+        brand_name=$2, industry=$3, target_audience=$4, unique_value_prop=$5,
+        primary_keywords=$6, tone_of_voice=$7, competitors=$8, content_themes=$9, cta_style=$10,
+        ga4_property_id=$11, gsc_domain=$12, wordpress_url=$13, target_monthly_traffic=$14, updated_at=NOW()
+    `, [c.client_domain, c.brand_name, c.industry, c.target_audience, c.unique_value_prop,
+        c.primary_keywords, c.tone_of_voice, c.competitors, c.content_themes, c.cta_style,
+        c.ga4_property_id, c.gsc_domain, c.wordpress_url, c.target_monthly_traffic]);
+  }
+
+  logger.info('[seo-kb] Client knowledge base seeded with 3 clients');
+}
