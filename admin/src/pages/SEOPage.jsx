@@ -17,12 +17,10 @@ const CLIENTS = [
   { domain: 'ageddentistry.org',           label: 'Aged Dentistry' },
 ];
 
-const TABS = [
-  { id: 'performance',  label: 'Performance',  icon: BarChart2 },
-  { id: 'keywords',     label: 'Keywords',     icon: Search },
-  { id: 'health',       label: 'Site Health',  icon: Shield },
-  { id: 'opportunities',label: 'Opportunities',icon: Target },
-  { id: 'alerts',       label: 'Alerts',       icon: AlertCircle },
+const DASHBOARD_TABS = [
+  { id: 'overview', label: 'Overview',  icon: BarChart2 },
+  { id: 'keywords', label: 'Keywords',  icon: Search },
+  { id: 'alerts',   label: 'Alerts',    icon: AlertCircle },
 ];
 
 // ---------------------------------------------------------------------------
@@ -42,9 +40,31 @@ function fmtPos(n) {
   return Number(n).toFixed(1);
 }
 
-function pct(curr, prev) {
-  if (!prev || prev === 0) return null;
-  return (((curr - prev) / prev) * 100).toFixed(1);
+function fmtCtr(n) {
+  if (n == null) return '—';
+  return `${Number(n).toFixed(2)}%`;
+}
+
+function trendArrow(current, previous, invertColor = false) {
+  if (current == null || previous == null) return null;
+  const curr = Number(current);
+  const prev = Number(previous);
+  if (isNaN(curr) || isNaN(prev) || prev === 0) return null;
+  const diff = curr - prev;
+  const pctChange = ((diff / Math.abs(prev)) * 100).toFixed(1);
+  if (Math.abs(diff) < 0.01) return null;
+
+  // For position, lower is better so invert the color logic
+  const isPositive = invertColor ? diff < 0 : diff > 0;
+  const Icon = diff > 0 ? ArrowUp : ArrowDown;
+  const color = isPositive ? 'text-green-600' : 'text-red-500';
+
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${color}`}>
+      <Icon className="w-3 h-3" />
+      {Math.abs(pctChange)}%
+    </span>
+  );
 }
 
 function posColor(pos) {
@@ -55,233 +75,231 @@ function posColor(pos) {
   return               'text-slate-500  bg-slate-50  border-slate-200';
 }
 
-function priorityBadge(p) {
-  if (p === 'high')   return 'bg-red-100 text-red-700';
-  if (p === 'medium') return 'bg-orange-100 text-orange-700';
-  return 'bg-slate-100 text-slate-600';
-}
-
 function alertBadge(type) {
-  if (type === 'ranking_drop')  return 'bg-red-100 text-red-700';
-  if (type === 'traffic_drop')  return 'bg-orange-100 text-orange-700';
-  if (type === 'ctr_fall')      return 'bg-yellow-100 text-yellow-700';
+  const t = (type ?? '').toLowerCase();
+  if (t.includes('ranking_drop') || t.includes('rank'))  return 'bg-red-100 text-red-700';
+  if (t.includes('traffic_drop') || t.includes('traffic')) return 'bg-orange-100 text-orange-700';
+  if (t.includes('ctr'))        return 'bg-yellow-100 text-yellow-700';
+  if (t.includes('success') || t.includes('improve'))     return 'bg-green-100 text-green-700';
   return 'bg-slate-100 text-slate-600';
 }
 
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now - d;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString('en-IN');
+}
+
 // ---------------------------------------------------------------------------
-// SVG Line Chart (lightweight — no recharts dependency)
+// Overview Tab — card per client with metrics + WoW trend
 // ---------------------------------------------------------------------------
-function LineChart({ data, xKey, y1Key, y2Key, y1Label = 'Clicks', y2Label = 'Impressions' }) {
-  if (!data || data.length < 2) {
+function OverviewTab({ clients, loading }) {
+  if (loading) {
     return (
-      <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
-        Not enough data to render chart
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-56 bg-white rounded-xl border border-slate-200 animate-pulse" />
+        ))}
       </div>
     );
   }
 
-  const W = 600, H = 180, PAD = { top: 16, right: 16, bottom: 32, left: 52 };
-  const innerW = W - PAD.left - PAD.right;
-  const innerH = H - PAD.top - PAD.bottom;
-
-  const sorted = [...data].reverse();
-  const y1Vals = sorted.map(d => Number(d[y1Key] ?? 0));
-  const y2Vals = sorted.map(d => Number(d[y2Key] ?? 0));
-  const maxY1 = Math.max(...y1Vals, 1);
-  const maxY2 = Math.max(...y2Vals, 1);
-
-  const x = i => PAD.left + (i / (sorted.length - 1)) * innerW;
-  const y1 = v => PAD.top + innerH - (v / maxY1) * innerH;
-  const y2 = v => PAD.top + innerH - (v / maxY2) * innerH;
-
-  const toPath = (vals, yFn) =>
-    vals.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${yFn(v).toFixed(1)}`).join(' ');
-
-  const xLabels = sorted.filter((_, i) => i % Math.ceil(sorted.length / 5) === 0 || i === sorted.length - 1);
-
-  return (
-    <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 320 }}>
-        {/* Grid lines */}
-        {[0, 0.25, 0.5, 0.75, 1].map(r => (
-          <line key={r}
-            x1={PAD.left} y1={PAD.top + innerH * (1 - r)}
-            x2={PAD.left + innerW} y2={PAD.top + innerH * (1 - r)}
-            stroke="#e2e8f0" strokeWidth="1" />
-        ))}
-        {/* Y1 labels (left) */}
-        {[0, 0.5, 1].map(r => (
-          <text key={r} x={PAD.left - 6} y={PAD.top + innerH * (1 - r) + 4}
-            textAnchor="end" fontSize="10" fill="#94a3b8">
-            {fmt(maxY1 * r)}
-          </text>
-        ))}
-        {/* Clicks line (navy) */}
-        <path d={toPath(y1Vals, y1)} fill="none" stroke="#1e3a5f" strokeWidth="2" strokeLinejoin="round" />
-        {/* Impressions line (orange) */}
-        <path d={toPath(y2Vals, y2)} fill="none" stroke="#f97316" strokeWidth="2" strokeLinejoin="round" strokeDasharray="4 2" />
-        {/* X axis labels */}
-        {xLabels.map((d, i) => {
-          const origIdx = sorted.indexOf(d);
-          return (
-            <text key={i} x={x(origIdx)} y={H - 4} textAnchor="middle" fontSize="9" fill="#94a3b8">
-              {String(d[xKey] ?? '').slice(5)}
-            </text>
-          );
-        })}
-        {/* Legend */}
-        <rect x={PAD.left} y={2} width={8} height={8} fill="#1e3a5f" rx="1" />
-        <text x={PAD.left + 12} y={10} fontSize="10" fill="#475569">{y1Label}</text>
-        <rect x={PAD.left + 70} y={2} width={8} height={8} fill="#f97316" rx="1" />
-        <text x={PAD.left + 82} y={10} fontSize="10" fill="#475569">{y2Label}</text>
-      </svg>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Metric card
-// ---------------------------------------------------------------------------
-function MetricCard({ label, value, prev, small }) {
-  const change = pct(Number(value), Number(prev));
-  return (
-    <div className={`bg-white rounded-xl border border-slate-200 p-4 ${small ? '' : ''}`}>
-      <p className="text-xs text-slate-500 mb-1">{label}</p>
-      <p className="text-2xl font-bold text-slate-900">{fmt(value)}</p>
-      {change !== null && (
-        <p className={`text-xs mt-1 flex items-center gap-1 ${Number(change) > 0 ? 'text-green-600' : 'text-red-500'}`}>
-          {Number(change) > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-          {Math.abs(change)}% vs prev period
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Empty state
-// ---------------------------------------------------------------------------
-function EmptyState({ message = 'No data yet — workflows will populate this automatically', workflowId, onTrigger }) {
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
-
-  async function run() {
-    if (!workflowId) return;
-    setLoading(true);
-    try {
-      await apiFetch(`/api/seo/trigger/${workflowId}`, { method: 'POST' });
-      setDone(true);
-    } catch {}
-    setLoading(false);
+  if (!clients || clients.length === 0) {
+    return (
+      <div className="py-16 text-center">
+        <BarChart2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+        <p className="text-slate-500 text-sm">No SEO data yet. Run the GSC + GA4 Data Pull workflow to get started.</p>
+      </div>
+    );
   }
 
   return (
-    <div className="py-12 text-center">
-      <BarChart2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-      <p className="text-slate-500 text-sm mb-4">{message}</p>
-      {workflowId && !done && (
-        <button onClick={run} disabled={loading}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm hover:bg-sky-700 disabled:opacity-50">
-          <Zap className="w-4 h-4" />
-          {loading ? 'Running…' : 'Run workflows now'}
-        </button>
-      )}
-      {done && <p className="text-green-600 text-sm">Workflow triggered! Data will appear shortly.</p>}
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      {clients.map(client => {
+        const knownClient = CLIENTS.find(c => c.domain === client.client_domain);
+        const displayName = client.client_name || knownClient?.label || client.client_domain;
+
+        return (
+          <div key={client.client_domain}
+            className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
+              <Globe className="w-4 h-4 text-sky-500 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-800 text-sm truncate">{displayName}</p>
+                <p className="text-xs text-slate-400 truncate">{client.client_domain}</p>
+              </div>
+            </div>
+
+            {/* Metrics grid */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              {/* Clicks */}
+              <div>
+                <p className="text-xs text-slate-500 mb-0.5">Total Clicks</p>
+                <p className="text-xl font-bold text-slate-900">{fmt(client.total_clicks)}</p>
+                <div className="mt-0.5">{trendArrow(client.total_clicks, client.prev_clicks)}</div>
+              </div>
+              {/* Impressions */}
+              <div>
+                <p className="text-xs text-slate-500 mb-0.5">Impressions</p>
+                <p className="text-xl font-bold text-slate-900">{fmt(client.total_impressions)}</p>
+                <div className="mt-0.5">{trendArrow(client.total_impressions, client.prev_impressions)}</div>
+              </div>
+              {/* Avg CTR */}
+              <div>
+                <p className="text-xs text-slate-500 mb-0.5">Avg CTR</p>
+                <p className="text-xl font-bold text-slate-900">{fmtCtr(client.avg_ctr)}</p>
+                <div className="mt-0.5">{trendArrow(client.avg_ctr, client.prev_ctr)}</div>
+              </div>
+              {/* Avg Position */}
+              <div>
+                <p className="text-xs text-slate-500 mb-0.5">Avg Position</p>
+                <p className="text-xl font-bold text-slate-900">{fmtPos(client.avg_position)}</p>
+                <div className="mt-0.5">{trendArrow(client.avg_position, client.prev_position, true)}</div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            {client.last_updated && (
+              <p className="text-xs text-slate-400 mt-4 pt-3 border-t border-slate-100">
+                Week of {new Date(client.last_updated).toLocaleDateString('en-IN')}
+              </p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Performance tab
+// Keywords Tab — cross-client keyword table with filter + sort
 // ---------------------------------------------------------------------------
-function PerformanceTab({ clientData, domain }) {
-  const weekly = clientData?.weekly ?? [];
-  if (weekly.length === 0) {
-    return <EmptyState workflowId="YXmClFSKZB9DMkyu" />;
-  }
-
-  const curr = weekly[0] ?? {};
-  const prev = weekly[1] ?? {};
-
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Total Clicks"       value={curr.total_clicks}       prev={prev.total_clicks} />
-        <MetricCard label="Total Impressions"  value={curr.total_impressions}  prev={prev.total_impressions} />
-        <MetricCard label="Avg Position"       value={fmtPos(curr.avg_position)} prev={fmtPos(prev.avg_position)} />
-        <MetricCard label="Total Sessions"     value={curr.total_sessions}     prev={prev.total_sessions} />
-      </div>
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <p className="text-sm font-semibold text-slate-700 mb-4">Clicks &amp; Impressions (last 12 weeks)</p>
-        <LineChart data={weekly} xKey="week_start" y1Key="total_clicks" y2Key="total_impressions" />
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Keywords tab
-// ---------------------------------------------------------------------------
-function KeywordsTab({ clientData }) {
+function KeywordsTab({ keywords, loading }) {
   const [search, setSearch] = useState('');
-  const keywords = (clientData?.keywords ?? []).filter(k =>
-    !search || k.keyword?.toLowerCase().includes(search.toLowerCase())
-  );
+  const [clientFilter, setClientFilter] = useState('all');
 
-  if ((clientData?.keywords ?? []).length === 0) {
-    return <EmptyState workflowId="BwO187curjMMA60i" />;
+  // Derive unique domains for filter
+  const domains = [...new Set((keywords ?? []).map(k => k.client_domain).filter(Boolean))];
+
+  const filtered = (keywords ?? [])
+    .filter(k => clientFilter === 'all' || k.client_domain === clientFilter)
+    .filter(k => !search || k.keyword?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const posA = Number(a.position ?? 999);
+      const posB = Number(b.position ?? 999);
+      return posA - posB;
+    });
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="h-12 bg-white rounded-lg border border-slate-200 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!keywords || keywords.length === 0) {
+    return (
+      <div className="py-16 text-center">
+        <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+        <p className="text-slate-500 text-sm">No keyword data yet. Run the Rank Tracking workflow to populate keywords.</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-3">
-      <div className="relative max-w-xs">
-        <Search className="absolute left-3 top-2 w-4 h-4 text-slate-400" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Filter keywords…"
-          className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" />
-      </div>
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Keyword</th>
-              <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Position</th>
-              <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Change</th>
-              <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500">Volume</th>
-              <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 hidden md:table-cell">URL</th>
-              <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 hidden md:table-cell">Checked</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {keywords.map((kw, i) => {
-              const change = Number(kw.position_change ?? kw.change ?? 0);
-              return (
-                <tr key={i} className="hover:bg-slate-50">
-                  <td className="px-4 py-2.5 font-medium text-slate-800">{kw.keyword}</td>
-                  <td className="px-3 py-2.5 text-center">
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold border ${posColor(kw.position)}`}>
-                      #{kw.position}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    {change === 0
-                      ? <Minus className="w-3.5 h-3.5 text-slate-400 mx-auto" />
-                      : change < 0
-                        ? <span className="flex items-center justify-center gap-0.5 text-green-600 text-xs font-semibold"><ArrowUp className="w-3 h-3" />{Math.abs(change)}</span>
-                        : <span className="flex items-center justify-center gap-0.5 text-red-500 text-xs font-semibold"><ArrowDown className="w-3 h-3" />{change}</span>
-                    }
-                  </td>
-                  <td className="px-3 py-2.5 text-right text-slate-600">{fmt(kw.search_volume)}</td>
-                  <td className="px-4 py-2.5 text-slate-500 text-xs truncate max-w-[180px] hidden md:table-cell">{kw.url}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-400 text-xs hidden md:table-cell">
-                    {kw.checked_at ? new Date(kw.checked_at).toLocaleDateString('en-IN') : '—'}
-                  </td>
-                </tr>
-              );
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-2 w-4 h-4 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Filter keywords..."
+            className="pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 w-64" />
+        </div>
+        <div className="relative">
+          <select
+            value={clientFilter}
+            onChange={e => setClientFilter(e.target.value)}
+            className="appearance-none pl-3 pr-8 py-1.5 text-sm border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+          >
+            <option value="all">All Clients</option>
+            {domains.map(d => {
+              const known = CLIENTS.find(c => c.domain === d);
+              return <option key={d} value={d}>{known?.label ?? d}</option>;
             })}
-          </tbody>
-        </table>
-        {keywords.length === 0 && (
+          </select>
+          <ChevronDown className="absolute right-2.5 top-2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+        </div>
+        <span className="text-xs text-slate-400">{filtered.length} keyword{filtered.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Keyword</th>
+                <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500">Client</th>
+                <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Position</th>
+                <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Previous</th>
+                <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Change</th>
+                <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500">Last Checked</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map((kw, i) => {
+                const change = Number(kw.change ?? 0);
+                const knownClient = CLIENTS.find(c => c.domain === kw.client_domain);
+                return (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="px-4 py-2.5 font-medium text-slate-800">{kw.keyword}</td>
+                    <td className="px-3 py-2.5 text-slate-600 text-xs">
+                      {knownClient?.label ?? kw.client_domain}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold border ${posColor(kw.position)}`}>
+                        #{kw.position}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-center text-slate-500 text-xs">
+                      {kw.previous_position != null ? `#${kw.previous_position}` : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      {change === 0
+                        ? <Minus className="w-3.5 h-3.5 text-slate-400 mx-auto" />
+                        : change < 0
+                          ? <span className="flex items-center justify-center gap-0.5 text-green-600 text-xs font-semibold">
+                              <ArrowUp className="w-3 h-3" />{Math.abs(change)}
+                            </span>
+                          : <span className="flex items-center justify-center gap-0.5 text-red-500 text-xs font-semibold">
+                              <ArrowDown className="w-3 h-3" />{change}
+                            </span>
+                      }
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-400 text-xs">
+                      {kw.checked_at ? new Date(kw.checked_at).toLocaleDateString('en-IN') : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {filtered.length === 0 && (
           <p className="text-center text-slate-400 text-sm py-6">No keywords match your filter</p>
         )}
       </div>
@@ -290,492 +308,52 @@ function KeywordsTab({ clientData }) {
 }
 
 // ---------------------------------------------------------------------------
-// Site Health tab
+// Alerts Tab — recent alerts with color-coded badges
 // ---------------------------------------------------------------------------
-function HealthTab({ clientData, domain, onTrigger }) {
-  const health = clientData?.health;
-
-  if (!health) {
-    return <EmptyState message="No PageSpeed data yet" workflowId="z21W6MDWBF0dukkT" />;
-  }
-
-  function scoreColor(s) {
-    const n = Number(s);
-    if (n >= 90) return 'text-green-600';
-    if (n >= 50) return 'text-orange-500';
-    return 'text-red-500';
-  }
-
-  function vitBadge(val, good, ok) {
-    if (val == null) return 'text-slate-400';
-    const v = Number(val);
-    if (v <= good) return 'text-green-600';
-    if (v <= ok)   return 'text-orange-500';
-    return 'text-red-500';
-  }
-
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-4">
-        {/* Mobile score */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 text-center">
-          <p className="text-xs text-slate-500 mb-2">Mobile Performance</p>
-          <p className={`text-5xl font-bold mb-1 ${scoreColor(health.mobile_performance_score)}`}>
-            {health.mobile_performance_score ?? '—'}
-          </p>
-          <p className="text-xs text-slate-400">/ 100</p>
-        </div>
-        {/* Desktop score */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 text-center">
-          <p className="text-xs text-slate-500 mb-2">Desktop Performance</p>
-          <p className={`text-5xl font-bold mb-1 ${scoreColor(health.desktop_performance_score)}`}>
-            {health.desktop_performance_score ?? '—'}
-          </p>
-          <p className="text-xs text-slate-400">/ 100</p>
-        </div>
-      </div>
-
-      {/* Core Web Vitals */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <p className="text-sm font-semibold text-slate-700 mb-4">Core Web Vitals</p>
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <p className="text-xs text-slate-500">LCP (mobile)</p>
-            <p className={`text-xl font-bold mt-0.5 ${vitBadge(health.mobile_lcp, 2500, 4000)}`}>
-              {health.mobile_lcp ? `${(Number(health.mobile_lcp) / 1000).toFixed(1)}s` : '—'}
-            </p>
-            <p className="text-xs text-slate-400">good &lt; 2.5s</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500">CLS (mobile)</p>
-            <p className={`text-xl font-bold mt-0.5 ${vitBadge(health.mobile_cls, 0.1, 0.25)}`}>
-              {health.mobile_cls ?? '—'}
-            </p>
-            <p className="text-xs text-slate-400">good &lt; 0.1</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500">Speed Index</p>
-            <p className={`text-xl font-bold mt-0.5 ${vitBadge(health.mobile_speed_index, 3400, 5800)}`}>
-              {health.mobile_speed_index ? `${(Number(health.mobile_speed_index) / 1000).toFixed(1)}s` : '—'}
-            </p>
-            <p className="text-xs text-slate-400">good &lt; 3.4s</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-400">
-          Last checked: {health.checked_at ? new Date(health.checked_at).toLocaleString('en-IN') : '—'}
-        </p>
-        <button onClick={() => onTrigger('z21W6MDWBF0dukkT')}
-          className="flex items-center gap-2 px-3 py-1.5 bg-sky-600 text-white rounded-lg text-xs hover:bg-sky-700">
-          <RefreshCw className="w-3.5 h-3.5" /> Run PageSpeed
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Opportunities tab
-// ---------------------------------------------------------------------------
-function OpportunitiesTab({ clientData }) {
-  const [filter, setFilter] = useState('all');
-  const opps = (clientData?.opportunities ?? []).filter(
-    o => filter === 'all' || o.priority === filter
-  );
-
-  if ((clientData?.opportunities ?? []).length === 0) {
-    return <EmptyState message="No open SEO opportunities yet" workflowId="M4rbRZL5jh0jJHku" />;
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        {['all', 'high', 'medium', 'low'].map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              filter === f ? 'bg-sky-600 text-white border-sky-600' : 'border-slate-200 text-slate-600 hover:border-slate-400'
-            }`}>
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
-      </div>
-      <div className="space-y-2">
-        {opps.map((o, i) => (
-          <div key={i} className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-start gap-3">
-              <span className={`mt-0.5 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${priorityBadge(o.priority)}`}>
-                {o.priority ?? 'low'}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-slate-800 text-sm">{o.title}</p>
-                {o.description && <p className="text-xs text-slate-500 mt-0.5">{o.description}</p>}
-              </div>
-              <p className="text-xs text-slate-400 flex-shrink-0">
-                {o.created_at ? new Date(o.created_at).toLocaleDateString('en-IN') : ''}
-              </p>
-            </div>
-          </div>
-        ))}
-        {opps.length === 0 && <p className="text-center text-slate-400 text-sm py-6">No {filter} priority items</p>}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Alerts tab
-// ---------------------------------------------------------------------------
-function AlertsTab({ clientData }) {
-  const alerts = clientData?.alerts ?? [];
-  if (alerts.length === 0) {
-    return <EmptyState message="No alerts yet — the alert workflow monitors this automatically" workflowId="5FVX2kEjuD7vWD0e" />;
-  }
-  return (
-    <div className="space-y-2">
-      {alerts.map((a, i) => (
-        <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3">
-          <span className={`mt-0.5 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${alertBadge(a.alert_type)}`}>
-            {(a.alert_type ?? 'info').replace('_', ' ')}
-          </span>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-slate-800">{a.message}</p>
-            {a.client_domain && <p className="text-xs text-slate-400 mt-0.5">{a.client_domain}</p>}
-          </div>
-          <p className="text-xs text-slate-400 flex-shrink-0">
-            {a.created_at ? new Date(a.created_at).toLocaleDateString('en-IN') : ''}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Overview cards — all clients side by side
-// ---------------------------------------------------------------------------
-function OverviewCards({ clients, onSelect }) {
-  if (!clients || clients.length === 0) {
+function AlertsTab({ alerts, loading }) {
+  if (loading) {
     return (
-      <EmptyState
-        message="No SEO data yet — run the GSC + GA4 Data Pull workflow to get started"
-        workflowId="YXmClFSKZB9DMkyu"
-      />
+      <div className="space-y-3">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="h-16 bg-white rounded-xl border border-slate-200 animate-pulse" />
+        ))}
+      </div>
     );
   }
+
+  if (!alerts || alerts.length === 0) {
+    return (
+      <div className="py-16 text-center">
+        <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+        <p className="text-slate-500 text-sm">No alerts yet. The alert workflow monitors this automatically.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {CLIENTS.map(c => {
-        const d = clients.find(cl => cl.client_domain === c.domain);
+    <div className="space-y-2">
+      {alerts.map((a, i) => {
+        const knownClient = CLIENTS.find(c => c.domain === a.client_domain);
         return (
-          <button key={c.domain} onClick={() => onSelect(c.domain)}
-            className="bg-white rounded-xl border border-slate-200 p-5 text-left hover:border-sky-300 hover:shadow-md transition-all group">
-            <div className="flex items-center gap-2 mb-4">
-              <Globe className="w-4 h-4 text-sky-500" />
-              <p className="font-semibold text-slate-800 text-sm">{c.domain}</p>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-400 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
-            {d ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-slate-500">Total Clicks</p>
-                  <p className="text-xl font-bold text-slate-900">{fmt(d.total_clicks)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Impressions</p>
-                  <p className="text-xl font-bold text-slate-900">{fmt(d.total_impressions)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Avg Position</p>
-                  <p className="text-xl font-bold text-slate-900">{fmtPos(d.avg_position)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Sessions</p>
-                  <p className="text-xl font-bold text-slate-900">{fmt(d.total_sessions)}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400">No data yet</p>
-            )}
-            {d?.last_updated && (
-              <p className="text-xs text-slate-400 mt-3">
-                Updated {new Date(d.last_updated).toLocaleDateString('en-IN')}
-              </p>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Workflows panel (rich version with health status + logs)
-// ---------------------------------------------------------------------------
-const STATUS_DOT = {
-  healthy: 'bg-green-400',
-  warning: 'bg-yellow-400',
-  error:   'bg-red-500',
-  manual:  'bg-slate-300',
-};
-const STATUS_LABEL = {
-  healthy: 'text-green-600',
-  warning: 'text-yellow-600',
-  error:   'text-red-500',
-  manual:  'text-slate-400',
-};
-
-function WorkflowsPanel() {
-  const [workflows, setWorkflows] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [triggering, setTriggering] = useState({});
-  const [triggerToast, setTriggerToast] = useState(null);  // { id, ok }
-  const [expandedLogs, setExpandedLogs] = useState({});   // id → log entries[]
-  const [loadingLogs, setLoadingLogs] = useState({});
-  const [runningAll, setRunningAll] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  function fetchStatus() {
-    apiFetch('/api/seo-workflows/status')
-      .then(d => { setWorkflows(d?.workflows ?? []); setSummary(d?.summary ?? null); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 60_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  async function triggerWorkflow(webhookPath, wfId) {
-    setTriggering(prev => ({ ...prev, [wfId]: true }));
-    setTriggerToast(null);
-    try {
-      const r = await apiFetch(`/api/seo-workflows/trigger/${webhookPath}`, { method: 'POST' });
-      setTriggerToast({ id: wfId, ok: r?.triggered ?? true });
-      setTimeout(fetchStatus, 3000);
-    } catch {
-      setTriggerToast({ id: wfId, ok: false });
-    }
-    setTriggering(prev => ({ ...prev, [wfId]: false }));
-    setTimeout(() => setTriggerToast(null), 4000);
-  }
-
-  async function viewLogs(wfId) {
-    if (expandedLogs[wfId]) {
-      setExpandedLogs(prev => { const n = { ...prev }; delete n[wfId]; return n; });
-      return;
-    }
-    setLoadingLogs(prev => ({ ...prev, [wfId]: true }));
-    try {
-      const r = await apiFetch(`/api/seo-workflows/logs?workflowId=${wfId}`);
-      setExpandedLogs(prev => ({ ...prev, [wfId]: (r?.logs ?? []).slice(0, 5) }));
-    } catch {
-      setExpandedLogs(prev => ({ ...prev, [wfId]: [] }));
-    }
-    setLoadingLogs(prev => ({ ...prev, [wfId]: false }));
-  }
-
-  async function runAll() {
-    setRunningAll(true);
-    const critical = workflows.filter(w => w.critical);
-    for (let i = 0; i < critical.length; i++) {
-      const wf = critical[i];
-      await triggerWorkflow(wf.webhookPath, wf.id);
-      if (i < critical.length - 1) await new Promise(r => setTimeout(r, 10_000));
-    }
-    setRunningAll(false);
-  }
-
-  return (
-    <div className="space-y-3">
-      {/* Header + summary */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-          <Zap className="w-4 h-4 text-sky-500" />
-          <p className="text-sm font-semibold text-slate-800">n8n Workflows</p>
-          <button onClick={fetchStatus} className="ml-auto text-slate-400 hover:text-slate-600 p-0.5">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Summary strip */}
-        {summary && (
-          <div className="px-4 py-2 border-b border-slate-50 flex gap-4 text-xs">
-            <span className="text-green-600 font-medium">✓ {summary.healthy} healthy</span>
-            {summary.warning > 0 && <span className="text-yellow-600 font-medium">⚠ {summary.warning} warning</span>}
-            {summary.error   > 0 && <span className="text-red-500 font-medium">✗ {summary.error} error</span>}
-          </div>
-        )}
-
-        {/* Run All critical */}
-        <div className="px-4 py-2 border-b border-slate-50">
-          <button
-            onClick={runAll}
-            disabled={runningAll || workflows.length === 0}
-            className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-sky-600 text-white rounded-lg text-xs font-medium hover:bg-sky-700 disabled:opacity-50 transition-colors"
-          >
-            <Play className="w-3.5 h-3.5" />
-            {runningAll ? 'Running critical workflows…' : 'Run All Critical'}
-          </button>
-        </div>
-
-        {/* Workflow cards */}
-        {loading ? (
-          <div className="px-4 py-6 text-center text-sm text-slate-400">Loading…</div>
-        ) : (
-          <div className="divide-y divide-slate-50">
-            {workflows.map(wf => (
-              <div key={wf.id} className="px-3 py-2.5">
-                {/* Row 1: name + badges + status dot */}
-                <div className="flex items-start gap-2">
-                  <span className={`mt-1.5 flex-shrink-0 w-2 h-2 rounded-full ${STATUS_DOT[wf.status] ?? 'bg-slate-300'}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className="text-xs font-semibold text-slate-700 leading-snug">{wf.name}</p>
-                      {wf.critical && (
-                        <span className="flex-shrink-0 px-1 py-0.5 bg-red-100 text-red-600 text-[10px] font-semibold rounded">CRITICAL</span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{wf.schedule}</p>
-                    <p className={`text-[10px] mt-0.5 ${STATUS_LABEL[wf.status] ?? 'text-slate-400'}`}>{wf.statusMessage}</p>
-                    {wf.dataCount > 0 && (
-                      <p className="text-[10px] text-slate-400">{wf.dataCount.toLocaleString('en-IN')} records</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Toast for this wf */}
-                {triggerToast?.id === wf.id && (
-                  <p className={`text-[10px] mt-1 ml-4 font-medium ${triggerToast.ok ? 'text-green-600' : 'text-red-500'}`}>
-                    {triggerToast.ok ? '✓ Triggered successfully' : '✗ Trigger failed'}
-                  </p>
-                )}
-
-                {/* Row 2: buttons */}
-                <div className="flex gap-1.5 mt-2 ml-4">
-                  <button
-                    onClick={() => triggerWorkflow(wf.webhookPath, wf.id)}
-                    disabled={triggering[wf.id]}
-                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-sky-50 border border-sky-200 text-sky-700 rounded hover:bg-sky-100 disabled:opacity-40 transition-colors"
-                  >
-                    {triggering[wf.id]
-                      ? <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-                      : <Play className="w-2.5 h-2.5" />}
-                    {triggering[wf.id] ? 'Running…' : 'Run Now'}
-                  </button>
-                  <button
-                    onClick={() => viewLogs(wf.id)}
-                    disabled={loadingLogs[wf.id]}
-                    className="flex items-center gap-1 px-2 py-1 text-[10px] border border-slate-200 text-slate-500 rounded hover:border-slate-300 hover:text-slate-700 transition-colors"
-                  >
-                    <Clock className="w-2.5 h-2.5" />
-                    {expandedLogs[wf.id] ? 'Hide' : 'Logs'}
-                  </button>
-                </div>
-
-                {/* Inline logs */}
-                {expandedLogs[wf.id] && (
-                  <div className="mt-2 ml-4 space-y-1">
-                    {expandedLogs[wf.id].length === 0 ? (
-                      <p className="text-[10px] text-slate-400">No logs yet</p>
-                    ) : (
-                      expandedLogs[wf.id].map((log, i) => (
-                        <div key={i} className="flex items-center gap-1.5">
-                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${log.status === 'triggered' || log.status === 'success' ? 'bg-green-400' : 'bg-red-400'}`} />
-                          <span className="text-[10px] text-slate-500">{log.status}</span>
-                          <span className="text-[10px] text-slate-400 ml-auto">
-                            {log.created_at ? new Date(log.created_at).toLocaleDateString('en-IN') : ''}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Data health panel
-// ---------------------------------------------------------------------------
-function DataHealthPanel() {
-  const [health, setHealth] = useState(null);
-
-  useEffect(() => {
-    apiFetch('/api/seo-workflows/data-health')
-      .then(d => setHealth(d))
-      .catch(() => {});
-  }, []);
-
-  if (!health) return null;
-
-  const rows = [
-    { label: 'Weekly Metrics',  count: health.seo_weekly_metrics?.count,   last: health.seo_weekly_metrics?.lastEntry,  extra: health.seo_weekly_metrics?.clients != null ? `${health.seo_weekly_metrics.clients} clients` : null },
-    { label: 'Keywords',        count: health.keyword_rankings?.count,      last: health.keyword_rankings?.lastEntry,    extra: health.keyword_rankings?.keywords != null ? `${health.keyword_rankings.keywords} unique` : null },
-    { label: 'Site Health',     count: health.site_health_metrics?.count,   last: health.site_health_metrics?.lastEntry  },
-    { label: 'Alerts',          count: health.seo_alerts_log?.count,        last: health.seo_alerts_log?.lastEntry       },
-    { label: 'Opportunities',   count: health.seo_opportunities?.count,     last: null, extra: health.seo_opportunities ? `${health.seo_opportunities.open} open` : null },
-    { label: 'Backlinks',       count: health.backlink_data?.count,         last: health.backlink_data?.lastEntry        },
-    { label: 'Content Gaps',    count: health.content_gap_analysis?.count,  last: health.content_gap_analysis?.lastEntry },
-  ];
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-        <Database className="w-4 h-4 text-emerald-500" />
-        <p className="text-sm font-semibold text-slate-800">Data Health</p>
-      </div>
-      <div className="divide-y divide-slate-50">
-        {rows.map(row => (
-          <div key={row.label} className="px-4 py-2 flex items-center gap-2">
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${(row.count ?? 0) > 0 ? 'bg-green-400' : 'bg-slate-300'}`} />
+          <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3">
+            <span className={`mt-0.5 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${alertBadge(a.alert_type)}`}>
+              {(a.alert_type ?? 'info').replace(/_/g, ' ')}
+            </span>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-slate-700">{row.label}</p>
-              {row.extra && <p className="text-[10px] text-slate-400">{row.extra}</p>}
-            </div>
-            <div className="text-right flex-shrink-0">
-              <p className="text-xs font-semibold text-slate-700">{(row.count ?? 0).toLocaleString('en-IN')}</p>
-              {row.last && (
-                <p className="text-[10px] text-slate-400">{new Date(row.last).toLocaleDateString('en-IN')}</p>
+              <p className="text-sm text-slate-800">{a.message}</p>
+              {a.client_domain && (
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {knownClient?.label ?? a.client_domain}
+                  {a.details ? ` - ${a.details}` : ''}
+                </p>
               )}
             </div>
+            <p className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">
+              {a.created_at ? timeAgo(a.created_at) : ''}
+            </p>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Content opportunities panel
-// ---------------------------------------------------------------------------
-function ContentPanel({ clientData }) {
-  const content = clientData?.content ?? [];
-  if (content.length === 0) return null;
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-        <FileText className="w-4 h-4 text-emerald-500" />
-        <p className="text-sm font-semibold text-slate-800">Content Opportunities</p>
-      </div>
-      <div className="divide-y divide-slate-50">
-        {content.map((c, i) => (
-          <div key={i} className="px-4 py-3">
-            <p className="text-xs font-medium text-slate-700">{c.topic ?? c.title ?? 'Untitled'}</p>
-            {c.competitor_keyword && (
-              <p className="text-xs text-slate-400 mt-0.5">Competitor keyword: {c.competitor_keyword}</p>
-            )}
-          </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }
@@ -784,40 +362,58 @@ function ContentPanel({ clientData }) {
 // Main SEOPage
 // ---------------------------------------------------------------------------
 export default function SEOPage() {
-  const [selectedDomain, setSelectedDomain] = useState(null); // null = overview
-  const [tab, setTab] = useState('performance');
-  const [overview, setOverview] = useState([]);
-  const [clientData, setClientData] = useState(null);
-  const [loadingOverview, setLoadingOverview] = useState(true);
-  const [loadingClient, setLoadingClient] = useState(false);
-  const [triggeringWorkflow, setTriggeringWorkflow] = useState({});
+  const [activeTab, setActiveTab] = useState('overview');
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Fetch overview
-  useEffect(() => {
+  // Data state
+  const [overview, setOverview] = useState([]);
+  const [keywords, setKeywords] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+
+  // Loading state
+  const [loadingOverview, setLoadingOverview] = useState(true);
+  const [loadingKeywords, setLoadingKeywords] = useState(true);
+  const [loadingAlerts, setLoadingAlerts] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Fetch functions
+  const fetchOverview = useCallback(() => {
     setLoadingOverview(true);
-    apiFetch('/api/seo/overview')
+    return apiFetch('/api/seo/overview')
       .then(d => setOverview(d?.clients ?? []))
       .catch(() => setOverview([]))
       .finally(() => setLoadingOverview(false));
   }, []);
 
-  // Fetch client detail when domain selected
+  const fetchKeywords = useCallback(() => {
+    setLoadingKeywords(true);
+    return apiFetch('/api/seo/keywords-all')
+      .then(d => setKeywords(d?.keywords ?? []))
+      .catch(() => setKeywords([]))
+      .finally(() => setLoadingKeywords(false));
+  }, []);
+
+  const fetchAlerts = useCallback(() => {
+    setLoadingAlerts(true);
+    return apiFetch('/api/seo/alerts')
+      .then(d => setAlerts(d?.alerts ?? []))
+      .catch(() => setAlerts([]))
+      .finally(() => setLoadingAlerts(false));
+  }, []);
+
+  // Initial load
   useEffect(() => {
-    if (!selectedDomain) { setClientData(null); return; }
-    setLoadingClient(true);
-    apiFetch(`/api/seo/client/${encodeURIComponent(selectedDomain)}`)
-      .then(d => setClientData(d))
-      .catch(() => setClientData({}))
-      .finally(() => setLoadingClient(false));
-  }, [selectedDomain]);
+    Promise.all([fetchOverview(), fetchKeywords(), fetchAlerts()])
+      .then(() => setLastUpdated(new Date()));
+  }, [fetchOverview, fetchKeywords, fetchAlerts]);
 
-  async function triggerWorkflow(workflowId) {
-    setTriggeringWorkflow(prev => ({ ...prev, [workflowId]: true }));
-    try { await apiFetch(`/api/seo/trigger/${workflowId}`, { method: 'POST' }); } catch {}
-    setTriggeringWorkflow(prev => ({ ...prev, [workflowId]: false }));
+  // Refresh all
+  async function handleRefresh() {
+    setRefreshing(true);
+    await Promise.all([fetchOverview(), fetchKeywords(), fetchAlerts()]);
+    setLastUpdated(new Date());
+    setRefreshing(false);
   }
-
-  const selectedClient = CLIENTS.find(c => c.domain === selectedDomain);
 
   return (
     <div className="flex h-screen bg-slate-50">
@@ -830,115 +426,68 @@ export default function SEOPage() {
             <div className="flex items-center gap-3">
               <BarChart2 className="w-5 h-5 text-sky-600" />
               <div>
-                <h1 className="text-lg font-bold text-slate-900">SEO Performance</h1>
-                <p className="text-xs text-slate-500">Search visibility &amp; rankings across all clients</p>
+                <h1 className="text-lg font-bold text-slate-900">SEO Dashboard</h1>
+                <p className="text-xs text-slate-500">Search visibility, rankings &amp; alerts across all clients</p>
               </div>
             </div>
 
-            {/* Client selector */}
             <div className="ml-auto flex items-center gap-3">
-              <div className="relative">
-                <select
-                  value={selectedDomain ?? ''}
-                  onChange={e => { setSelectedDomain(e.target.value || null); setTab('performance'); }}
-                  className="appearance-none pl-3 pr-8 py-1.5 text-sm border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                >
-                  <option value="">All Clients</option>
-                  {CLIENTS.map(c => (
-                    <option key={c.domain} value={c.domain}>{c.label} ({c.domain})</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2.5 top-2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-              </div>
-
-              {selectedDomain && (
-                <button onClick={() => setSelectedDomain(null)}
-                  className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 border border-slate-200 rounded-lg">
-                  ← All clients
-                </button>
+              {/* Last updated */}
+              {lastUpdated && (
+                <span className="text-xs text-slate-400 hidden sm:inline">
+                  Updated {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                </span>
               )}
+              {/* Refresh button */}
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium border border-slate-200 rounded-lg bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
             </div>
           </div>
 
-          {/* Client tabs */}
-          {selectedDomain && (
-            <div className="flex gap-1 mt-3 overflow-x-auto">
-              {TABS.map(t => {
-                const Icon = t.icon;
-                return (
-                  <button key={t.id} onClick={() => setTab(t.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                      tab === t.id ? 'bg-sky-600 text-white' : 'text-slate-500 hover:bg-slate-100'
+          {/* Tabs */}
+          <div className="flex gap-1 mt-3">
+            {DASHBOARD_TABS.map(t => {
+              const Icon = t.icon;
+              const count = t.id === 'keywords' ? keywords.length
+                          : t.id === 'alerts' ? alerts.length
+                          : overview.length;
+              return (
+                <button key={t.id} onClick={() => setActiveTab(t.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                    activeTab === t.id ? 'bg-sky-600 text-white' : 'text-slate-500 hover:bg-slate-100'
+                  }`}>
+                  <Icon className="w-3.5 h-3.5" />
+                  {t.label}
+                  {count > 0 && (
+                    <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${
+                      activeTab === t.id ? 'bg-sky-500 text-white' : 'bg-slate-100 text-slate-500'
                     }`}>
-                    <Icon className="w-3.5 h-3.5" />
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Body */}
         <div className="p-6">
-          <div className="flex gap-6">
-
-            {/* Main content */}
-            <div className="flex-1 min-w-0 space-y-5">
-
-              {/* Overview mode */}
-              {!selectedDomain && (
-                <>
-                  <p className="text-sm font-semibold text-slate-700">
-                    {overview.length > 0
-                      ? `${overview.length} client${overview.length !== 1 ? 's' : ''} tracked`
-                      : 'Client Overview'}
-                  </p>
-                  {loadingOverview
-                    ? <div className="grid grid-cols-3 gap-4">{[1,2,3].map(i => <div key={i} className="h-40 bg-white rounded-xl border border-slate-200 animate-pulse" />)}</div>
-                    : <OverviewCards clients={overview} onSelect={d => { setSelectedDomain(d); setTab('performance'); }} />
-                  }
-                </>
-              )}
-
-              {/* Client detail mode */}
-              {selectedDomain && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-sky-500" />
-                    <p className="text-sm font-semibold text-slate-700">
-                      {selectedClient?.label} — {selectedDomain}
-                    </p>
-                    {loadingClient && <RefreshCw className="w-3.5 h-3.5 text-slate-400 animate-spin" />}
-                  </div>
-
-                  {loadingClient ? (
-                    <div className="space-y-3">
-                      {[1,2,3].map(i => <div key={i} className="h-20 bg-white rounded-xl border border-slate-200 animate-pulse" />)}
-                    </div>
-                  ) : (
-                    <>
-                      {tab === 'performance'   && <PerformanceTab clientData={clientData} domain={selectedDomain} />}
-                      {tab === 'keywords'      && <KeywordsTab clientData={clientData} />}
-                      {tab === 'health'        && <HealthTab clientData={clientData} domain={selectedDomain} onTrigger={triggerWorkflow} />}
-                      {tab === 'opportunities' && <OpportunitiesTab clientData={clientData} />}
-                      {tab === 'alerts'        && <AlertsTab clientData={clientData} />}
-                    </>
-                  )}
-
-                  {/* Content opportunities — always shown below tabs */}
-                  {!loadingClient && <ContentPanel clientData={clientData} />}
-                </>
-              )}
-            </div>
-
-            {/* Right panel: Workflows + Data Health */}
-            <div className="w-80 flex-shrink-0 space-y-4">
-              <WorkflowsPanel />
-              <DataHealthPanel />
-            </div>
-
-          </div>
+          {activeTab === 'overview' && (
+            <OverviewTab clients={overview} loading={loadingOverview} />
+          )}
+          {activeTab === 'keywords' && (
+            <KeywordsTab keywords={keywords} loading={loadingKeywords} />
+          )}
+          {activeTab === 'alerts' && (
+            <AlertsTab alerts={alerts} loading={loadingAlerts} />
+          )}
         </div>
       </main>
     </div>
