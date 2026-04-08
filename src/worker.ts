@@ -622,6 +622,17 @@ cron.schedule('30 3 * * *', () => safeCron('Retainer Invoice Generator', async (
 console.log('[cron] Retainer invoice generator scheduled — daily 9:00 AM IST');
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Backend PageSpeed Monitor — Sunday 7:30 AM IST (2:00 UTC)
+// Bypasses n8n WF-SEO-05 which has a connection issue
+// ---------------------------------------------------------------------------
+cron.schedule('0 2 * * 0', () => safeCron('PageSpeed Monitor', async () => {
+  const { runPageSpeedChecks } = await import('./services/pagespeedService');
+  const result = await runPageSpeedChecks();
+  console.log(`[CRON] PageSpeed: ${result.checked} checked, ${result.errors} errors`);
+}), { timezone: 'UTC' });
+console.log('[cron] PageSpeed monitor scheduled — Sundays 7:30 AM IST');
+
 // Weekly Data Cleanup — Sunday 2:00 AM IST (Saturday 20:30 UTC)
 // ---------------------------------------------------------------------------
 cron.schedule('30 20 * * 6', () => safeCron('Weekly Data Cleanup', async () => {
