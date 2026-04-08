@@ -338,4 +338,15 @@ router.post('/test-blocker', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/system/test-pagespeed — run PageSpeed checks manually
+router.post('/test-pagespeed', requireAuth, async (req, res) => {
+  try {
+    const { runPageSpeedChecks } = await import('../services/pagespeedService');
+    const result = await runPageSpeedChecks();
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 export default router;
