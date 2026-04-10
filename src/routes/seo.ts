@@ -229,30 +229,20 @@ router.post('/trigger/:workflowId', async (req: Request, res: Response) => {
 router.get('/keywords-all', async (_req: Request, res: Response) => {
   try {
     const result = await db.execute(sql`
-      SELECT keyword, client_domain, current_position AS position, previous_position,
-        current_position - previous_position AS change,
-        search_volume, checked_at
+      SELECT keyword, client_domain,
+        current_position AS position,
+        previous_position,
+        (current_position - previous_position) AS change,
+        search_volume,
+        checked_at
       FROM keyword_rankings
-      ORDER BY current_position ASC
+      ORDER BY current_position ASC NULLS LAST
       LIMIT 200
     `);
     res.json({ keywords: result.rows });
   } catch (e) {
-    // Try alternate column names
-    try {
-      const result = await db.execute(sql`
-        SELECT keyword, client_domain, position, previous_position,
-          position - previous_position AS change,
-          search_volume, checked_at
-        FROM keyword_rankings
-        ORDER BY position ASC
-        LIMIT 200
-      `);
-      res.json({ keywords: result.rows });
-    } catch (e2) {
-      logger.error('[seo] keywords-all error:', e2);
-      res.status(500).json({ error: 'Failed to fetch keywords' });
-    }
+    logger.error('[seo] keywords-all error:', e);
+    res.status(500).json({ error: 'Failed to fetch keywords' });
   }
 });
 
