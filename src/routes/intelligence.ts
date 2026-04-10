@@ -24,17 +24,18 @@ if (!_apiKey || _apiKey.length <= 10 || !_apiKey.startsWith('sk-ant-')) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/intelligence/reports — last 30 reports
+// GET /api/intelligence/reports — last 30 reports (all statuses for history)
 // ---------------------------------------------------------------------------
 router.get('/reports', async (_req: Request, res: Response) => {
   try {
     const result = await pool.query(`
       SELECT id, report_date, report_type, analysis, wins, problems, actions,
              anomalies, predictions, ads_score, seo_score, sales_score,
-             ops_score, overall_score, tokens_used, created_at
+             ops_score, overall_score, tokens_used, created_at,
+             COALESCE(status, 'complete') AS status, error_message
       FROM ai_intelligence_reports
-      WHERE COALESCE(status, 'complete') = 'complete'
-      ORDER BY report_date DESC LIMIT 30
+      WHERE COALESCE(status, 'complete') IN ('complete', 'failed', 'generating')
+      ORDER BY created_at DESC LIMIT 30
     `);
     res.json({ reports: result.rows });
   } catch (e) {
@@ -44,17 +45,29 @@ router.get('/reports', async (_req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/intelligence/today — today's report (or null)
+// GET /api/intelligence/today — today's complete report, or failed state
 // ---------------------------------------------------------------------------
 router.get('/today', async (_req: Request, res: Response) => {
   try {
-    const result = await pool.query(`
+    // Prefer complete report for today
+    const complete = await pool.query(`
       SELECT * FROM ai_intelligence_reports
       WHERE report_date = CURRENT_DATE
         AND COALESCE(status, 'complete') = 'complete'
       ORDER BY created_at DESC LIMIT 1
     `);
-    res.json({ report: result.rows[0] ?? null });
+    if (complete.rows.length > 0) {
+      res.json({ report: complete.rows[0] });
+      return;
+    }
+    // Fall back to failed/generating to surface error state to UI
+    const latest = await pool.query(`
+      SELECT id, report_date, status, error_message, created_at
+      FROM ai_intelligence_reports
+      WHERE report_date = CURRENT_DATE
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    res.json({ report: latest.rows[0] ?? null });
   } catch (e) {
     logger.error('[intelligence] today fetch failed:', e);
     res.status(500).json({ error: 'Failed to fetch today\'s report' });

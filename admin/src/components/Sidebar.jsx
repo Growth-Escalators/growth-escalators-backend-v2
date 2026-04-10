@@ -4,7 +4,7 @@ import { logout, getUser, apiFetch } from '../lib/api.js';
 import {
   Users, BarChart2, Zap, Mail, Receipt, Activity, Lock, Home,
   TrendingUp, FileText, Share2, MessageSquare, Settings, Layout, MapPin,
-  Shield, ClipboardList, CreditCard, Kanban, Brain, Target
+  Shield, ClipboardList, CreditCard, Kanban, Brain, Target, Link, Calendar
 } from 'lucide-react';
 
 const ROLE_BADGE_COLORS = {
@@ -162,6 +162,11 @@ export default function Sidebar() {
               </NavLink>
             )}
             {isAdmin && (
+              <NavLink to="/social-scheduling" className={navClass}>
+                <Calendar className="w-4 h-4" /> Social Scheduling
+              </NavLink>
+            )}
+            {isAdmin && (
               <NavLink to="/growth-os" className={navClass}>
                 <Zap className="w-4 h-4" /> Growth OS
               </NavLink>
@@ -176,6 +181,11 @@ export default function Sidebar() {
             {canSequences && (
               <NavLink to="/emails" className={navClass}>
                 <Mail className="w-4 h-4" /> Email Templates
+              </NavLink>
+            )}
+            {isAdmin && (
+              <NavLink to="/links" className={navClass}>
+                <Link className="w-4 h-4" /> Link Shortener
               </NavLink>
             )}
             {canSequences && (

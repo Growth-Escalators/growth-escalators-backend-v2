@@ -11,12 +11,13 @@ export default defineConfig({
   server: {
     port: 5174,
     proxy: {
-      '/auth': 'http://localhost:3000',
-      '/contacts': 'http://localhost:3000',
-      '/deals': 'http://localhost:3000',
-      '/sequences': 'http://localhost:3000',
-      '/bookings': 'http://localhost:3000',
-      '/messages': 'http://localhost:3000',
+      '/api': { target: 'http://localhost:3000', changeOrigin: true },
+      '/auth': { target: 'http://localhost:3000', changeOrigin: true },
+      '/contacts': { target: 'http://localhost:3000', changeOrigin: true },
+      '/deals': { target: 'http://localhost:3000', changeOrigin: true },
+      '/sequences': { target: 'http://localhost:3000', changeOrigin: true },
+      '/bookings': { target: 'http://localhost:3000', changeOrigin: true },
+      '/messages': { target: 'http://localhost:3000', changeOrigin: true },
     },
   },
 });

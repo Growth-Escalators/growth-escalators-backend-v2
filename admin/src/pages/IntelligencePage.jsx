@@ -399,22 +399,42 @@ function HistoryTable({ reports }) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {reports.map((r, i) => {
-            const issues = parseJson(r.problems) ?? [];
-            const meta   = parseJson(r.actions) ?? {};
-            const isOpen = expanded === i;
+            const issues  = parseJson(r.problems) ?? [];
+            const meta    = parseJson(r.actions) ?? {};
+            const isOpen  = expanded === i;
+            const isFailed     = r.status === 'failed';
+            const isGenerating = r.status === 'generating';
             return (
               <React.Fragment key={r.id ?? i}>
-                <tr className="hover:bg-slate-50 cursor-pointer" onClick={() => setExpanded(isOpen ? null : i)}>
+                <tr className={`hover:bg-slate-50 cursor-pointer ${isFailed ? 'bg-red-50/40' : ''}`} onClick={() => setExpanded(isOpen ? null : i)}>
                   <td className="px-4 py-2.5 text-slate-700 font-medium">{fmtDate(r.report_date)}</td>
                   <td className="px-3 py-2.5 text-center">
-                    <span className={`font-bold ${scoreColor(r.overall_score ?? 0)}`}>{r.overall_score ?? '—'}</span>
+                    {isFailed ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
+                        <AlertCircle className="w-3 h-3" /> Failed
+                      </span>
+                    ) : isGenerating ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">
+                        <RefreshCw className="w-3 h-3 animate-spin" /> Generating
+                      </span>
+                    ) : (
+                      <span className={`font-bold ${scoreColor(r.overall_score ?? 0)}`}>{r.overall_score ?? '—'}</span>
+                    )}
                   </td>
-                  <td className="px-4 py-2.5 text-slate-500 text-xs hidden md:table-cell truncate max-w-[220px]">{r.analysis ?? '—'}</td>
-                  <td className="px-3 py-2.5 text-center text-slate-500">{issues.length}</td>
+                  <td className="px-4 py-2.5 text-slate-500 text-xs hidden md:table-cell truncate max-w-[220px]">
+                    {isFailed ? <span className="text-red-400 italic">Generation error</span> : (r.analysis ?? '—')}
+                  </td>
+                  <td className="px-3 py-2.5 text-center text-slate-500">{isFailed ? '—' : issues.length}</td>
                   <td className="pr-3 text-slate-400">{isOpen ? <ChevronDown className="w-3.5 h-3.5"/> : <ChevronRight className="w-3.5 h-3.5"/>}</td>
                 </tr>
                 {isOpen && (
                   <tr><td colSpan={5} className="px-4 py-3 bg-slate-50">
+                    {isFailed && r.error_message && (
+                      <div className="flex items-start gap-2 mb-3 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                        <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700 font-mono">{r.error_message}</p>
+                      </div>
+                    )}
                     {meta.coaching_summary && <p className="text-xs text-slate-600 mb-2">{meta.coaching_summary}</p>}
                     {issues.slice(0,3).map((iss,j) => (
                       <div key={j} className="text-xs text-slate-600 mb-1">
@@ -737,6 +757,27 @@ export default function IntelligencePage() {
                     className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
                     {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                     {generating ? 'Generating… (polling for result)' : 'Generate Today\'s Report'}
+                  </button>
+                </div>
+              ) : todayReport.status === 'generating' ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">
+                  <RefreshCw className="w-12 h-12 text-indigo-400 mx-auto mb-4 animate-spin" />
+                  <p className="text-slate-600 font-medium mb-2">Report is being generated…</p>
+                  <p className="text-slate-400 text-sm">This usually takes 1–2 minutes. Refresh to check status.</p>
+                </div>
+              ) : todayReport.status === 'failed' ? (
+                <div className="bg-red-50 rounded-2xl border border-red-200 p-10 text-center">
+                  <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+                  <p className="text-red-700 font-semibold mb-2">Generation failed</p>
+                  {todayReport.error_message && (
+                    <p className="text-red-500 text-sm mb-4 max-w-md mx-auto font-mono bg-red-100 rounded-lg px-4 py-2">
+                      {todayReport.error_message}
+                    </p>
+                  )}
+                  <button onClick={generateReport} disabled={generating}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
+                    {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                    {generating ? 'Retrying…' : 'Retry Generation'}
                   </button>
                 </div>
               ) : (

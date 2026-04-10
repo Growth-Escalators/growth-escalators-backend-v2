@@ -159,10 +159,44 @@ console.log('[cron] overdue invoice check scheduled — daily at 10 AM IST');
 
 // Daily AI Intelligence Report — 8:30 AM IST (3:00 UTC)
 cron.schedule('0 3 * * *', () => safeCron('Daily Intelligence Report', async () => {
-  const data = await collectDailyData();
-  const analysis = await analyzeWithClaude(data);
-  await deliverDailyIntelligence(analysis, data);
-  console.log('[CRON] Intelligence report delivered. Score:', analysis.scores.overall);
+  // Insert placeholder row so failures are visible in history
+  let reportId: string | null = null;
+  try {
+    const ins = await pool.query(`
+      INSERT INTO ai_intelligence_reports (report_date, report_type, status, overall_score, tokens_used)
+      VALUES (CURRENT_DATE, 'daily', 'generating', 0, 0)
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    `);
+    reportId = (ins.rows[0] as { id: string } | undefined)?.id ?? null;
+    if (!reportId) {
+      // Already a row for today — skip to avoid duplicates
+      console.log('[CRON] Intelligence: row already exists for today, skipping generation');
+      return;
+    }
+  } catch (e) {
+    console.error('[CRON] Intelligence: could not insert placeholder row:', e);
+  }
+
+  try {
+    const data = await collectDailyData();
+    const analysis = await analyzeWithClaude(data);
+    await deliverDailyIntelligence(analysis, data);
+    if (reportId) {
+      await pool.query(`UPDATE ai_intelligence_reports SET status='complete' WHERE id=$1`, [reportId]).catch(() => {});
+    }
+    console.log('[CRON] Intelligence report delivered. Score:', analysis.scores.overall);
+  } catch (e) {
+    console.error('[CRON] Intelligence report generation failed:', e);
+    const msg = e instanceof Error ? e.message : String(e);
+    if (reportId) {
+      await pool.query(
+        `UPDATE ai_intelligence_reports SET status='failed', error_message=$1 WHERE id=$2`,
+        [msg.slice(0, 500), reportId],
+      ).catch(() => {});
+    }
+    throw e; // re-throw so safeCron logs it
+  }
 }), { timezone: 'UTC' });
 console.log('[cron] AI intelligence report scheduled — daily 8:30 AM IST');
 
