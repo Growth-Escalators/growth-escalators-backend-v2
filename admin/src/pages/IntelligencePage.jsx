@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
-import { apiFetch } from '../lib/api.js';
+import { apiFetch, getUser } from '../lib/api.js';
+import IntelligenceChatPanel from './IntelligenceChatPanel.jsx';
 import {
   Brain, Sparkles, RefreshCw, TrendingUp, AlertTriangle,
   CheckCircle, ChevronDown, ChevronRight, Eye, EyeOff,
@@ -552,6 +553,8 @@ function SystemHealthTab() {
 // Main page
 // ---------------------------------------------------------------------------
 export default function IntelligencePage() {
+  const user = getUser();
+  const isAdmin = user?.role === 'admin';
   const [todayReport, setTodayReport] = useState(undefined);
   const [allReports, setAllReports]   = useState([]);
   const [scores, setScores]           = useState([]);
@@ -681,6 +684,7 @@ export default function IntelligencePage() {
     { id: 'prompts', label: `Action Prompts${promptCount > 0 ? ` (${promptCount})` : ''}`, icon: Zap },
     { id: 'health',  label: 'System Health', icon: Activity },
     { id: 'history', label: 'History', icon: Activity },
+    ...(isAdmin ? [{ id: 'chat', label: 'Ask AI', icon: MessageSquare }] : []),
   ];
 
   return (
@@ -925,6 +929,13 @@ export default function IntelligencePage() {
 
           {/* ── SYSTEM HEALTH TAB ── */}
           {activeTab === 'health' && <SystemHealthTab />}
+
+          {/* ── CHAT TAB (admin only) ── */}
+          {activeTab === 'chat' && isAdmin && (
+            <div style={{ height: 'calc(100vh - 160px)' }}>
+              <IntelligenceChatPanel />
+            </div>
+          )}
 
           {/* ── HISTORY TAB ── */}
           {activeTab === 'history' && (
