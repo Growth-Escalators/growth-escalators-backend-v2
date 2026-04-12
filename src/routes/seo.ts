@@ -364,4 +364,96 @@ router.get('/backlinks', async (_req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// POST /api/seo/generate-content — AI-optimized content generation
+// ---------------------------------------------------------------------------
+router.post('/generate-content', async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { role: string } }).user;
+  if (user?.role !== 'admin') { res.status(403).json({ error: 'Admin only' }); return; }
+
+  const { clientDomain, keyword, aiOptimized } = req.body as {
+    clientDomain: string; keyword: string; aiOptimized?: boolean;
+  };
+  if (!clientDomain || !keyword) { res.status(400).json({ error: 'clientDomain and keyword required' }); return; }
+
+  try {
+    if (aiOptimized) {
+      const { generateAIOptimizedContent } = await import('../services/contentGenerationService');
+      const result = await generateAIOptimizedContent(clientDomain, keyword);
+      res.json(result);
+    } else {
+      const { generateContentForClient } = await import('../services/contentGenerationService');
+      const result = await generateContentForClient(clientDomain, keyword);
+      res.json(result);
+    }
+  } catch (e) {
+    logger.error('[seo] generate-content error:', e);
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Content generation failed' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/seo/analyze-visibility — AI visibility score for a URL
+// ---------------------------------------------------------------------------
+router.post('/analyze-visibility', async (req: Request, res: Response) => {
+  const { url } = req.body as { url: string };
+  if (!url) { res.status(400).json({ error: 'url required' }); return; }
+
+  try {
+    const { analyzeAIVisibility } = await import('../services/aiVisibilityService');
+    const result = await analyzeAIVisibility(url);
+    res.json(result);
+  } catch (e) {
+    logger.error('[seo] analyze-visibility error:', e);
+    res.status(500).json({ error: 'Analysis failed' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/seo/competitor-brief — competitor content analysis for a keyword
+// ---------------------------------------------------------------------------
+router.post('/competitor-brief', async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { role: string } }).user;
+  if (user?.role !== 'admin') { res.status(403).json({ error: 'Admin only' }); return; }
+
+  const { keyword, clientDomain } = req.body as { keyword: string; clientDomain: string };
+  if (!keyword || !clientDomain) { res.status(400).json({ error: 'keyword and clientDomain required' }); return; }
+
+  try {
+    const { fetchCompetitorPages, analyzeCompetitorContent } = await import('../services/competitorContentService');
+    const competitors = await fetchCompetitorPages(keyword);
+    const analysis = await analyzeCompetitorContent(keyword, clientDomain, competitors);
+    res.json({ keyword, clientDomain, competitors, analysis });
+  } catch (e) {
+    logger.error('[seo] competitor-brief error:', e);
+    res.status(500).json({ error: 'Competitor analysis failed' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/seo/content-briefs — list generated content and briefs
+// ---------------------------------------------------------------------------
+router.get('/content-briefs', async (_req: Request, res: Response) => {
+  try {
+    const { pool: dbPool } = await import('../db/index');
+    const [pages, gaps] = await Promise.all([
+      dbPool.query(`
+        SELECT id, project_name, client_domain, page_title, page_slug, status, page_type, target_keyword, created_at
+        FROM client_pages
+        ORDER BY created_at DESC LIMIT 50
+      `).catch(() => ({ rows: [] })),
+      dbPool.query(`
+        SELECT id, project_name, target_keyword, our_position, priority_score, status, analysed_at,
+               topics_missing, questions_missing, word_count_gap
+        FROM content_gap_analysis
+        ORDER BY priority_score DESC NULLS LAST, analysed_at DESC LIMIT 30
+      `).catch(() => ({ rows: [] })),
+    ]);
+    res.json({ pages: pages.rows, briefs: gaps.rows });
+  } catch (e) {
+    logger.error('[seo] content-briefs error:', e);
+    res.status(500).json({ error: 'Failed to fetch content briefs' });
+  }
+});
+
 export default router;
