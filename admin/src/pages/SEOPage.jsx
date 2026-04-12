@@ -24,6 +24,7 @@ const DASHBOARD_TABS = [
   { id: 'backlinks',     label: 'Backlinks',     icon: Link2 },
   { id: 'alerts',        label: 'Alerts',        icon: AlertCircle },
   { id: 'workflows',     label: 'Workflows',     icon: Activity },
+  { id: 'content',       label: 'Content Engine', icon: FileText },
 ];
 
 // ---------------------------------------------------------------------------
@@ -883,6 +884,401 @@ function WorkflowsTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Content Engine Tab — generate content, analyze visibility, view briefs
+// ---------------------------------------------------------------------------
+function ContentEngineTab() {
+  // --- Section A: Generate Content ---
+  const [genClient, setGenClient] = useState(CLIENTS[0].domain);
+  const [genKeyword, setGenKeyword] = useState('');
+  const [genAiOptimized, setGenAiOptimized] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [genResult, setGenResult] = useState(null);
+  const [genError, setGenError] = useState(null);
+
+  // --- Section B: AI Visibility Analyzer ---
+  const [vizUrl, setVizUrl] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [vizResult, setVizResult] = useState(null);
+  const [vizError, setVizError] = useState(null);
+
+  // --- Section C: Content Briefs ---
+  const [briefs, setBriefs] = useState(null);
+  const [briefsLoading, setBriefsLoading] = useState(true);
+  const [briefsError, setBriefsError] = useState(null);
+
+  useEffect(() => {
+    setBriefsLoading(true);
+    apiFetch('/api/seo/content-briefs')
+      .then(d => setBriefs(d))
+      .catch(e => setBriefsError(e.message || 'Failed to load content briefs'))
+      .finally(() => setBriefsLoading(false));
+  }, []);
+
+  async function handleGenerate() {
+    if (!genKeyword.trim()) return;
+    setGenerating(true);
+    setGenResult(null);
+    setGenError(null);
+    try {
+      const res = await apiFetch('/api/seo/generate-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientDomain: genClient, keyword: genKeyword.trim(), aiOptimized: genAiOptimized }),
+      });
+      setGenResult(res);
+    } catch (e) {
+      setGenError(e.message || 'Failed to generate content');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleAnalyze() {
+    if (!vizUrl.trim()) return;
+    setAnalyzing(true);
+    setVizResult(null);
+    setVizError(null);
+    try {
+      const res = await apiFetch('/api/seo/analyze-visibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: vizUrl.trim() }),
+      });
+      setVizResult(res);
+    } catch (e) {
+      setVizError(e.message || 'Failed to analyze visibility');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  function scoreColor(score) {
+    if (score >= 70) return 'text-green-600';
+    if (score >= 40) return 'text-amber-500';
+    return 'text-red-500';
+  }
+
+  function scoreBgColor(score) {
+    if (score >= 70) return 'bg-green-500';
+    if (score >= 40) return 'bg-amber-400';
+    return 'bg-red-500';
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Section A: Generate Content */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <FileText className="w-4 h-4 text-sky-500" /> Generate Content
+        </h3>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Client</label>
+            <div className="relative">
+              <select
+                value={genClient}
+                onChange={e => setGenClient(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                {CLIENTS.map(c => (
+                  <option key={c.domain} value={c.domain}>{c.label}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs text-slate-500 mb-1">Keyword</label>
+            <input
+              type="text"
+              value={genKeyword}
+              onChange={e => setGenKeyword(e.target.value)}
+              placeholder="Enter target keyword..."
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer pb-0.5">
+            <input
+              type="checkbox"
+              checked={genAiOptimized}
+              onChange={e => setGenAiOptimized(e.target.checked)}
+              className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+            />
+            AI Optimized
+          </label>
+          <button
+            onClick={handleGenerate}
+            disabled={generating || !genKeyword.trim()}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-50 transition-colors"
+          >
+            {generating && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+            {generating ? 'Generating...' : 'Generate Content'}
+          </button>
+        </div>
+
+        {genError && (
+          <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 flex items-center gap-2">
+            <XCircle className="w-4 h-4 flex-shrink-0" /> {genError}
+          </div>
+        )}
+
+        {genResult && (
+          <div className="mt-4 space-y-3">
+            {/* Title + Meta */}
+            {genResult.title && (
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-sm font-semibold text-slate-800">{genResult.title}</p>
+                {genResult.metaDescription && (
+                  <p className="text-xs text-slate-500 mt-1">{genResult.metaDescription}</p>
+                )}
+              </div>
+            )}
+
+            {/* Schema badges */}
+            {genResult.schemas && genResult.schemas.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {genResult.schemas.map((s, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200">
+                    <CheckCircle className="w-3 h-3" /> {s}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Content HTML preview */}
+            {genResult.contentHtml && (
+              <div className="border border-slate-200 rounded-lg p-4 prose prose-sm max-w-none text-slate-700"
+                dangerouslySetInnerHTML={{ __html: genResult.contentHtml }} />
+            )}
+
+            {/* FAQ items */}
+            {genResult.faqItems && genResult.faqItems.length > 0 && (
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-xs font-bold text-slate-600 mb-2">FAQ Items</p>
+                <div className="space-y-2">
+                  {genResult.faqItems.map((faq, i) => (
+                    <div key={i} className="text-sm">
+                      <p className="font-medium text-slate-700">{faq.question}</p>
+                      <p className="text-slate-500 text-xs mt-0.5">{faq.answer}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Draft status badge */}
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                <Clock className="w-3 h-3" /> Stored as draft
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Section B: AI Visibility Analyzer */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <Zap className="w-4 h-4 text-purple-500" /> AI Visibility Analyzer
+        </h3>
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label className="block text-xs text-slate-500 mb-1">URL</label>
+            <input
+              type="text"
+              value={vizUrl}
+              onChange={e => setVizUrl(e.target.value)}
+              placeholder="https://example.com/page"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+          </div>
+          <button
+            onClick={handleAnalyze}
+            disabled={analyzing || !vizUrl.trim()}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+          >
+            {analyzing && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+            {analyzing ? 'Analyzing...' : 'Analyze'}
+          </button>
+        </div>
+
+        {vizError && (
+          <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 flex items-center gap-2">
+            <XCircle className="w-4 h-4 flex-shrink-0" /> {vizError}
+          </div>
+        )}
+
+        {vizResult && (
+          <div className="mt-4 space-y-4">
+            {/* Score */}
+            <div className="text-center">
+              <p className={`text-5xl font-extrabold ${scoreColor(vizResult.score ?? 0)}`}>
+                {vizResult.score ?? 0}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">AI Visibility Score</p>
+            </div>
+
+            {/* Score breakdowns */}
+            {vizResult.breakdown && (
+              <div className="space-y-2">
+                {['schema', 'faq', 'firstSentence', 'depth', 'freshness'].map(key => {
+                  const val = vizResult.breakdown[key] ?? 0;
+                  return (
+                    <div key={key} className="flex items-center gap-3">
+                      <span className="text-xs text-slate-500 w-28 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${scoreBgColor(val)}`} style={{ width: `${val}%` }} />
+                      </div>
+                      <span className="text-xs font-semibold text-slate-600 w-8 text-right">{val}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Recommendations */}
+            {vizResult.recommendations && vizResult.recommendations.length > 0 && (
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-xs font-bold text-slate-600 mb-2">Recommendations</p>
+                <ul className="space-y-1">
+                  {vizResult.recommendations.map((rec, i) => (
+                    <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                      {rec}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Section C: Content Briefs */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <Database className="w-4 h-4 text-amber-500" /> Content Briefs
+        </h3>
+
+        {briefsLoading && (
+          <div className="py-8 text-center text-slate-400">
+            <RefreshCw className="w-5 h-5 animate-spin inline mr-2" />Loading content briefs...
+          </div>
+        )}
+
+        {briefsError && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 flex items-center gap-2">
+            <XCircle className="w-4 h-4 flex-shrink-0" /> {briefsError}
+          </div>
+        )}
+
+        {briefs && !briefsLoading && (
+          <div className="space-y-5">
+            {/* Generated Pages table */}
+            {briefs.pages && briefs.pages.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-slate-600 mb-2">Generated Pages</p>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Title</th>
+                        <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500">Client</th>
+                        <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Status</th>
+                        <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Type</th>
+                        <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500">Created</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {briefs.pages.map((p, i) => {
+                        const statusColor = p.status === 'draft_wp' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700';
+                        const client = CLIENTS.find(c => c.domain === p.client_domain);
+                        return (
+                          <tr key={p.id ?? i} className="hover:bg-slate-50">
+                            <td className="px-4 py-2.5 font-medium text-slate-700 truncate max-w-[250px]">{p.page_title}</td>
+                            <td className="px-3 py-2.5 text-slate-500 text-xs">{client?.label ?? p.client_domain}</td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${statusColor}`}>{p.status?.replace(/_/g, ' ')}</span>
+                            </td>
+                            <td className="px-3 py-2.5 text-center text-slate-500 text-xs">{p.page_type || '—'}</td>
+                            <td className="px-4 py-2.5 text-right text-slate-400 text-xs">
+                              {p.created_at ? new Date(p.created_at).toLocaleDateString('en-IN') : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Content Briefs table */}
+            {briefs.briefs && briefs.briefs.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-slate-600 mb-2">Content Briefs</p>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Target Keyword</th>
+                        <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Our Pos</th>
+                        <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Priority</th>
+                        <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Topics Missing</th>
+                        <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Word Gap</th>
+                        <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-500">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {briefs.briefs.map((b, i) => {
+                        const priority = parseFloat(b.priority_score ?? '0');
+                        const priorityColor = priority >= 7 ? 'text-red-600 bg-red-50' : priority >= 4 ? 'text-amber-600 bg-amber-50' : 'text-slate-500 bg-slate-50';
+                        const statusColor = b.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : b.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600';
+                        const topicsMissing = Array.isArray(b.topics_missing) ? b.topics_missing.length : (b.topics_missing ?? 0);
+                        return (
+                          <tr key={b.id ?? i} className="hover:bg-slate-50">
+                            <td className="px-4 py-2.5 font-medium text-slate-700">{b.target_keyword}</td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${posColor(b.our_position)}`}>
+                                {b.our_position ? fmtPos(b.our_position) : '—'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${priorityColor}`}>
+                                {priority.toFixed(1)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-center text-slate-600 text-xs">{topicsMissing}</td>
+                            <td className="px-3 py-2.5 text-center text-slate-600 text-xs">
+                              {b.word_count_gap > 0 ? `+${b.word_count_gap}` : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${statusColor}`}>{b.status}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {(!briefs.pages || briefs.pages.length === 0) && (!briefs.briefs || briefs.briefs.length === 0) && (
+              <div className="py-8 text-center">
+                <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-500 text-sm">No content briefs or generated pages yet.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main SEOPage
 // ---------------------------------------------------------------------------
 export default function SEOPage() {
@@ -1021,6 +1417,9 @@ export default function SEOPage() {
           )}
           {activeTab === 'workflows' && (
             <WorkflowsTab />
+          )}
+          {activeTab === 'content' && (
+            <ContentEngineTab />
           )}
         </div>
 

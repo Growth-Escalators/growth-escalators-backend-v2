@@ -706,6 +706,14 @@ cron.schedule('30 3 * * 2', () => safeCron('Rank Tracking', async () => {
 }), { timezone: 'UTC' });
 console.log('[cron] Rank tracking scheduled — Tuesdays 9:00 AM IST (Serper.dev)');
 
+// Competitor Content Analysis — 1st and 15th of each month at 9:00 AM IST (3:30 UTC)
+cron.schedule('30 3 1,15 * *', () => safeCron('Competitor Content Analysis', async () => {
+  const { runCompetitorContentAnalysis } = await import('./services/competitorContentService');
+  const result = await runCompetitorContentAnalysis();
+  console.log(`[CRON] Competitor content: ${result.analyzed} keywords analyzed, ${result.errors} errors`);
+}), { timezone: 'UTC' });
+console.log('[cron] Competitor content analysis scheduled — 1st & 15th of month at 9:00 AM IST');
+
 // Weekly Data Cleanup — Sunday 2:00 AM IST (Saturday 20:30 UTC)
 // ---------------------------------------------------------------------------
 cron.schedule('30 20 * * 6', () => safeCron('Weekly Data Cleanup', async () => {
