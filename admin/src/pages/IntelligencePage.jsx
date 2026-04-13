@@ -367,7 +367,7 @@ function ScoreTrendChart({ scores }) {
         {lines.map(l => <path key={l.key} d={toPath(l.key)} fill="none" stroke={l.color} strokeWidth={l.w} strokeLinejoin="round"/>)}
         {sorted.filter((_,i) => i % xTick === 0 || i === sorted.length-1).map((d,_,arr) => {
           const oi = sorted.indexOf(d);
-          return <text key={oi} x={x(oi)} y={H-4} textAnchor="middle" fontSize="9" fill="#94a3b8">{String(d.report_date??'').slice(5)}</text>;
+          return <text key={oi} x={x(oi)} y={H-4} textAnchor="middle" fontSize="9" fill="#94a3b8">{d.report_date ? new Date(d.report_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}</text>;
         })}
         {lines.map((l,i) => (
           <g key={l.key} transform={`translate(${PAD.left + i*90}, 0)`}>
