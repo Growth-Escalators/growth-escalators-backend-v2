@@ -804,6 +804,14 @@ cron.schedule('30 3 1,15 * *', () => safeCron('Competitor Content Analysis', asy
 }), { timezone: 'UTC' });
 console.log('[cron] Competitor content analysis scheduled — 1st & 15th of month at 9:00 AM IST');
 
+// Directory Scrapers — Daily 11 AM IST (5:30 UTC) — Clutch, GoodFirms, Upwork, LinkedIn
+cron.schedule('30 5 * * *', () => safeCron('Directory Scrapers', async () => {
+  const { runAllScrapers } = await import('./services/directoryScraperService');
+  const result = await runAllScrapers();
+  console.log(`[CRON] Directory scrapers: ${result.total} found, ${result.imported} new leads imported`);
+}), { timezone: 'UTC' });
+console.log('[cron] Directory scrapers scheduled — daily 11:00 AM IST');
+
 // Finance: Auto-generate recurring expenses + team salaries — 1st of each month 9 AM IST (3:30 UTC)
 cron.schedule('30 3 1 * *', () => safeCron('Finance Monthly Generation', async () => {
   const { generateMonthlyExpenses } = await import('./services/financeService');
