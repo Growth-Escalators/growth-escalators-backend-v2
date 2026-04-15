@@ -210,6 +210,9 @@ export default function Sidebar() {
             <NavLink to="/billing" className={navClass}>
               <CreditCard className="w-4 h-4" /> Billing
             </NavLink>
+            <NavLink to="/finance" className={navClass}>
+              <Receipt className="w-4 h-4" /> Expenses
+            </NavLink>
           </>
         )}
 
