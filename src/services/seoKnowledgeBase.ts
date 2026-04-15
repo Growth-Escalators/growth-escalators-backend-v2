@@ -5,28 +5,8 @@ import logger from '../utils/logger';
 // Seed client knowledge base with real brand data
 // ---------------------------------------------------------------------------
 export async function seedClientKnowledgeBase(): Promise<void> {
-  // Ensure table exists
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS client_knowledge_base (
-      id SERIAL PRIMARY KEY,
-      client_domain TEXT UNIQUE NOT NULL,
-      brand_name TEXT,
-      industry TEXT,
-      target_audience TEXT,
-      unique_value_prop TEXT,
-      primary_keywords TEXT,
-      tone_of_voice TEXT,
-      competitors TEXT,
-      content_themes TEXT,
-      cta_style TEXT,
-      ga4_property_id TEXT,
-      gsc_domain TEXT,
-      wordpress_url TEXT,
-      target_monthly_traffic INTEGER,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    )
-  `).catch(() => {});
+  // Ensure unique constraint on client_domain (added by ensureSeoTables)
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS client_kb_domain_uniq ON client_knowledge_base(client_domain) WHERE client_domain IS NOT NULL`).catch(() => {});
 
   const clients = [
     {
