@@ -804,6 +804,17 @@ cron.schedule('30 3 1,15 * *', () => safeCron('Competitor Content Analysis', asy
 }), { timezone: 'UTC' });
 console.log('[cron] Competitor content analysis scheduled — 1st & 15th of month at 9:00 AM IST');
 
+// Finance: Auto-generate recurring expenses + team salaries — 1st of each month 9 AM IST (3:30 UTC)
+cron.schedule('30 3 1 * *', () => safeCron('Finance Monthly Generation', async () => {
+  const { generateMonthlyExpenses } = await import('./services/financeService');
+  const tenantResult = await pool.query(`SELECT id FROM tenants WHERE slug = 'growth-escalators' LIMIT 1`);
+  if (tenantResult.rows.length > 0) {
+    const result = await generateMonthlyExpenses(tenantResult.rows[0].id as string);
+    console.log(`[CRON] Finance: generated ${result.generated} recurring expenses for this month`);
+  }
+}), { timezone: 'UTC' });
+console.log('[cron] Finance monthly generation scheduled — 1st of month 9:00 AM IST');
+
 // Outreach Weekly Summary — Monday 8 AM IST (2:30 UTC)
 cron.schedule('30 2 * * 1', () => safeCron('Outreach Weekly Summary', async () => {
   const { sendWeeklyOutreachSummary } = await import('./services/outreachAlertService');

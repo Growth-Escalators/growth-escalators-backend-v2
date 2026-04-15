@@ -42,6 +42,7 @@ import searchRouter from './routes/search';
 import auditRouter from './routes/audit';
 import seoRouter from './routes/seo';
 import seoWorkflowsRouter from './routes/seoWorkflows';
+import financeRouter from './routes/finance';
 import intelligenceRouter from './routes/intelligence';
 import growthOSRouter from './routes/growthOS';
 import { ensureGrowthOSTables } from './services/growthOSSetup';
@@ -160,6 +161,7 @@ app.use('/api/audit', requireAuth, auditRouter);
 app.use('/api/analytics', requireAuth, analyticsRouter);
 app.use('/api/seo', requireAuth, seoRouter);
 app.use('/api/seo-workflows', requireAuth, seoWorkflowsRouter);
+app.use('/api/finance', requireAuth, financeRouter);
 app.use('/api/intelligence', requireAuth, intelligenceRouter);
 app.use('/api/growth-os', requireAuth, growthOSRouter);
 app.use('/api/whatsapp', requireAuth, whatsappTemplatesRouter);
@@ -336,6 +338,8 @@ async function startServer() {
   ensureOutreachPipelines().catch(e => console.error('[startup] Outreach pipelines bootstrap failed:', e));
   // Bootstrap outreach_leads table for WF-01 enrichment pipeline
   ensureOutreachLeadsTable().catch(e => console.error('[startup] outreach_leads table bootstrap failed:', e));
+  // Bootstrap finance tables
+  import('./services/financeService').then(m => m.ensureFinanceTables()).catch(e => console.error('[startup] Finance tables bootstrap failed:', e));
   // Bootstrap SEO tables (site_health_metrics, seo_opportunities, seo_alerts_log) THEN seed knowledge base
   import('./services/seoWorkflowHealthService').then(m => m.ensureSeoTables())
     .then(() => import('./services/seoKnowledgeBase').then(m => m.seedClientKnowledgeBase()))

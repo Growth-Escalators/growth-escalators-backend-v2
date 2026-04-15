@@ -8,6 +8,7 @@ import PipelineManagerPage from './pages/PipelineManagerPage.jsx';
 import SystemHealthPage from './pages/SystemHealthPage.jsx';
 import EmailTemplatesPage from './pages/EmailTemplatesPage.jsx';
 import BillingPage from './pages/BillingPage.jsx';
+import FinancePage from './pages/FinancePage.jsx';
 import PermissionsPage from './pages/PermissionsPage.jsx';
 import AdsPage from './pages/AdsPage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/health" element={<Navigate to="/intelligence?tab=health" replace />} />
         <Route path="/emails" element={<PrivateRoute><EmailTemplatesPage /></PrivateRoute>} />
         <Route path="/billing" element={<PrivateRoute><BillingPage /></PrivateRoute>} />
+        <Route path="/finance" element={<PrivateRoute><FinancePage /></PrivateRoute>} />
         <Route path="/settings/permissions" element={<PrivateRoute><PermissionsPage /></PrivateRoute>} />
         <Route path="/settings/audit" element={<PrivateRoute><AuditPage /></PrivateRoute>} />
         <Route path="/ads" element={<PrivateRoute><AdsPage /></PrivateRoute>} />
