@@ -29,6 +29,11 @@ const FREELANCER_STAGES = [
   'Appointment Booked', 'No Show', 'Workshop Waitlist', 'Workshop Paid',
 ];
 
+const D2C_STAGES = [
+  'Paid ₹9', 'Paid ₹208', 'Paid ₹508', 'Paid ₹707',
+  'Appointment Booked', 'No Show', 'Converted', 'Lost',
+];
+
 export async function ensureOutreachPipelines(): Promise<void> {
   const tenantResult = await pool.query(
     `SELECT id FROM tenants WHERE slug = 'growth-escalators' LIMIT 1`,
@@ -40,7 +45,8 @@ export async function ensureOutreachPipelines(): Promise<void> {
   const tenantId = tenantResult.rows[0].id as string;
 
   for (const [name, slug, stages, color, order] of [
-    ['Agency Owners', 'agency-owners', AGENCY_STAGES, '#1B2E5E', 1] as const,
+    ['D2C Prospects', 'd2c-prospects', D2C_STAGES,       '#059669', 0] as const,
+    ['Agency Owners', 'agency-owners', AGENCY_STAGES,    '#1B2E5E', 1] as const,
     ['Freelancer',    'freelancer',    FREELANCER_STAGES, '#7C3AED', 2] as const,
   ]) {
     const exists = await pool.query(
