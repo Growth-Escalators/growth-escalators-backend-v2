@@ -123,6 +123,8 @@ function AddExpenseForm({ categories, onAdded, editing, onCancelEdit, vendors = 
           {vendors.map((v, i) => <option key={i} value={v} />)}
         </datalist>
       </div>
+      <textarea placeholder="Notes (optional)" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
+        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none" />
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
           <input type="checkbox" checked={form.isRecurring} onChange={e => setForm({ ...form, isRecurring: e.target.checked })} className="rounded border-slate-300 text-sky-600" />
@@ -510,7 +512,7 @@ export default function FinancePage() {
                       )}
                       {expenses.map(e => (
                         <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50">
-                          <td className="px-4 py-2.5 text-slate-600">{new Date(e.expense_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{new Date(String(e.expense_date).split('T')[0] + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
                           <td className="px-4 py-2.5">
                             <p className="text-slate-800 font-medium">{e.description}</p>
                             {e.vendor_name && <p className="text-xs text-slate-400">{e.vendor_name}</p>}
@@ -567,7 +569,7 @@ export default function FinancePage() {
                       {income.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No income for {monthLabel}</td></tr>}
                       {income.map((i, idx) => (
                         <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50">
-                          <td className="px-4 py-2.5 text-slate-600">{new Date(i.income_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{new Date(String(i.income_date).split('T')[0] + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
                           <td className="px-4 py-2.5 text-slate-800 font-medium">{i.source}</td>
                           <td className="px-4 py-2.5 text-slate-600">{i.description || '—'}</td>
                           <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${i.category === 'invoice' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{i.category === 'invoice' ? 'Invoice' : 'Other'}</span></td>
@@ -781,7 +783,7 @@ export default function FinancePage() {
                         <tr key={l.id} className="border-b border-slate-50">
                           <td className="px-4 py-2.5 font-medium text-slate-800">{l.member_name}</td>
                           <td className="px-4 py-2.5 capitalize text-slate-600">{l.leave_type}</td>
-                          <td className="px-4 py-2.5 text-slate-600">{new Date(l.start_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} — {new Date(l.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{new Date(String(l.start_date).split('T')[0] + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} — {new Date(String(l.end_date).split('T')[0] + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
                           <td className="px-4 py-2.5 text-center">{l.days}</td>
                           <td className="px-4 py-2.5 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${l.status === 'approved' ? 'bg-green-50 text-green-700' : l.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
