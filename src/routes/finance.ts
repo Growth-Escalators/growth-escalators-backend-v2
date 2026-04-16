@@ -532,6 +532,65 @@ router.patch('/leaves/:id', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/finance/vendors — autocomplete vendor names
+// ---------------------------------------------------------------------------
+router.get('/vendors', async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId;
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT vendor_name FROM expenses WHERE tenant_id = $1 AND vendor_name IS NOT NULL AND vendor_name != '' ORDER BY vendor_name`,
+      [tenantId],
+    );
+    res.json({ vendors: result.rows.map((r: { vendor_name: string }) => r.vendor_name) });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/finance/expenses/export-csv?month=2026-04
+// ---------------------------------------------------------------------------
+router.get('/expenses/export-csv', async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId;
+  const month = (req.query.month as string) || new Date().toISOString().slice(0, 7);
+  const firstDay = `${month}-01`;
+
+  try {
+    const result = await pool.query(
+      `SELECT e.expense_date, e.description, c.name AS category, e.amount, e.vendor_name, e.payment_method, e.notes, e.expense_type, e.is_recurring, t.name AS team_member
+       FROM expenses e
+       LEFT JOIN expense_categories c ON c.id = e.category_id
+       LEFT JOIN team_payroll t ON t.id = e.team_member_id
+       WHERE e.tenant_id = $1 AND e.expense_date >= $2 AND e.expense_date < ($2::date + INTERVAL '1 month')
+       ORDER BY e.expense_date DESC`,
+      [tenantId, firstDay],
+    );
+
+    const headers = ['Date', 'Description', 'Category', 'Amount (INR)', 'Vendor', 'Payment Method', 'Notes', 'Type', 'Recurring', 'Team Member'];
+    const rows = (result.rows as Array<Record<string, unknown>>).map(r => [
+      String(r.expense_date).split('T')[0],
+      `"${String(r.description || '').replace(/"/g, '""')}"`,
+      r.category || 'Uncategorized',
+      r.amount,
+      `"${String(r.vendor_name || '').replace(/"/g, '""')}"`,
+      r.payment_method || '',
+      `"${String(r.notes || '').replace(/"/g, '""')}"`,
+      r.expense_type || 'one-time',
+      r.is_recurring ? 'Yes' : 'No',
+      r.team_member || '',
+    ]);
+
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="expenses-${month}.csv"`);
+    res.send(csv);
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/finance/pnl?months=6
 // ---------------------------------------------------------------------------
 router.get('/pnl', async (req: Request, res: Response) => {
