@@ -569,6 +569,12 @@ function AccountsTab({ accounts, onDelete, onAdd }) {
           );
         })}
       </div>
+
+      <p className="text-xs text-slate-500 mt-3 leading-relaxed">
+        <strong>Where's Instagram?</strong> Instagram accounts appear automatically when linked to a connected Facebook Page.
+        To link: Go to your Facebook Page → Settings → Linked Accounts → Instagram.
+        Your Instagram must be a Business or Creator account.
+      </p>
     </div>
   );
 }

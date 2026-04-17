@@ -98,8 +98,8 @@ export async function ensureIntelligenceTable(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function analyzeWithClaude(data: AgencyDailyData): Promise<Analysis> {
-  const apiKey = process.env.CLAUDE_API_KEY;
-  const hasApiKey = apiKey && apiKey.length > 10 && apiKey.startsWith('sk-ant-');
+  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  const hasApiKey = !!apiKey && apiKey.length > 10;
   if (!hasApiKey) {
     logger.warn('[intelligence] CLAUDE_API_KEY not set or invalid — using fallback analysis');
     return buildFallbackAnalysis(data);

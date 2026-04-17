@@ -18,9 +18,9 @@ pool.query(`ALTER TABLE ai_intelligence_reports ADD COLUMN IF NOT EXISTS error_m
 pool.query(`UPDATE ai_intelligence_reports SET status='failed', error_message='Orphaned — server restarted' WHERE status='generating' AND created_at < NOW() - INTERVAL '10 minutes'`).catch(() => {});
 
 // API key reminder
-const _apiKey = process.env.CLAUDE_API_KEY;
-if (!_apiKey || _apiKey.length <= 10 || !_apiKey.startsWith('sk-ant-')) {
-  console.warn('[intelligence] ACTION NEEDED: railway variables set CLAUDE_API_KEY=\'your-key\' --service web');
+const _apiKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+if (!_apiKey || _apiKey.length <= 10) {
+  console.warn('[intelligence] ACTION NEEDED: railway variables set ANTHROPIC_API_KEY=\'your-key\' --service web');
 }
 
 // ---------------------------------------------------------------------------
@@ -209,11 +209,27 @@ router.post('/generate', async (req: Request, res: Response) => {
       const analysis = await analyzeWithClaude(data);
       await deliverDailyIntelligence(analysis, data);
 
-      // Update record with complete status
+      // Update record with complete status and actual scores
       if (reportId) {
         await pool.query(`
-          UPDATE ai_intelligence_reports SET status = 'complete' WHERE id = $1
-        `, [reportId]).catch(() => {});
+          UPDATE ai_intelligence_reports
+          SET status = 'complete',
+              overall_score = $2,
+              ads_score = $3,
+              seo_score = $4,
+              sales_score = $5,
+              ops_score = $6,
+              tokens_used = $7
+          WHERE id = $1
+        `, [
+          reportId,
+          analysis.scores?.overall ?? 0,
+          analysis.scores?.ads ?? 0,
+          analysis.scores?.seo ?? 0,
+          analysis.scores?.sales ?? 0,
+          analysis.scores?.ops ?? 0,
+          analysis.tokensUsed ?? 0,
+        ]).catch(() => {});
       }
 
       logger.info(`[intelligence] Background generation complete. Score: ${analysis.scores.overall}`);

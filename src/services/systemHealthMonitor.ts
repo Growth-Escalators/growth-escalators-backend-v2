@@ -46,7 +46,7 @@ const CRON_WINDOWS: Record<string, number> = {
   'PageSpeed Monitor': 10080, 'Daily Archive': 1500,
   // Outreach
   'Outreach Enrichment': 10, 'Outreach CRM Sync': 60,
-  'Outreach Daily Digest': 1500, 'Daily Lead Discovery': 1500,
+  'Daily Lead Discovery': 1500,
   'Reset Stuck Enriching Leads': 120, 'Weekly Outreach Summary': 10080,
   'Saleshandy Auto-Upload': 15,
   // Ops
@@ -56,7 +56,7 @@ const CRON_WINDOWS: Record<string, number> = {
   'Morning Briefing': 1500, 'Evening Summary': 1500,
   'Competitor Content Analysis': 21600,
   'SEO Alert Triggers': 1500, 'SEO Backlink Monitor': 10080,
-  'SEO Content Decay': 44640, 'SEO Weekly Digest': 10080,
+  'SEO Content Decay': 10080, 'SEO Weekly Digest': 10080,
 };
 
 // Alert rate limiting — 12h cooldown + 5-minute startup grace period
@@ -191,7 +191,7 @@ async function checkSeo(): Promise<SubsystemHealth> {
   try {
     const r = await pool.query(`
       SELECT
-        (SELECT COUNT(*)::int FROM seo_weekly_metrics WHERE week_start >= CURRENT_DATE - 14) AS recent_metrics,
+        (SELECT COUNT(*)::int FROM seo_weekly_metrics WHERE COALESCE(week_start, week_start_date) >= CURRENT_DATE - 14) AS recent_metrics,
         (SELECT COUNT(*)::int FROM keyword_rankings WHERE checked_at >= NOW() - INTERVAL '48 hours') AS recent_rankings
     `);
     const m = r.rows[0] as Record<string, string>;
@@ -242,35 +242,39 @@ async function checkInfrastructure(): Promise<SubsystemHealth> {
   } catch { checks.webUp = false; }
 
   // n8n — check /healthz AND DB connectivity via API
-  try {
-    const n8nUrl = process.env.N8N_BASE_URL || 'https://primary-production-6c6f5.up.railway.app';
-    const r = await fetch(`${n8nUrl}/healthz`, { signal: AbortSignal.timeout(5000) });
-    checks.n8nUp = r.ok;
+  if (!process.env.N8N_API_KEY) {
+    checks.n8nUp = null; // Not configured — don't alarm
+  } else {
+    try {
+      const n8nUrl = process.env.N8N_BASE_URL || 'https://primary-production-6c6f5.up.railway.app';
+      const r = await fetch(`${n8nUrl}/healthz`, { signal: AbortSignal.timeout(5000) });
+      checks.n8nUp = r.ok;
 
-    if (r.ok) {
-      const apiKey = process.env.N8N_API_KEY;
-      if (apiKey) {
-        try {
-          const dbCheck = await fetch(`${n8nUrl}/api/v1/workflows?limit=1`, {
-            headers: { 'X-N8N-API-KEY': apiKey },
-            signal: AbortSignal.timeout(5000),
-          });
-          checks.n8nDbHealthy = dbCheck.ok;
-          if (!dbCheck.ok) checks.n8nUp = false;
-        } catch {
-          checks.n8nDbHealthy = false;
-          checks.n8nUp = false;
+      if (r.ok) {
+        const apiKey = process.env.N8N_API_KEY;
+        if (apiKey) {
+          try {
+            const dbCheck = await fetch(`${n8nUrl}/api/v1/workflows?limit=1`, {
+              headers: { 'X-N8N-API-KEY': apiKey },
+              signal: AbortSignal.timeout(5000),
+            });
+            checks.n8nDbHealthy = dbCheck.ok;
+            if (!dbCheck.ok) checks.n8nUp = false;
+          } catch {
+            checks.n8nDbHealthy = false;
+            checks.n8nUp = false;
+          }
         }
       }
-    }
-  } catch { checks.n8nUp = false; }
+    } catch { checks.n8nUp = false; }
+  }
 
   // Database
   const dbStart = Date.now();
   try {
     await pool.query('SELECT 1');
     checks.dbResponseMs = Date.now() - dbStart;
-    checks.dbHealthy = (Date.now() - dbStart) < 500;
+    checks.dbHealthy = (Date.now() - dbStart) < 2000;
   } catch { checks.dbHealthy = false; checks.dbResponseMs = -1; }
 
   checks.metaTokenSet = !!(process.env.META_ACCESS_TOKEN || process.env.META_ADS_TOKEN);
@@ -278,7 +282,7 @@ async function checkInfrastructure(): Promise<SubsystemHealth> {
 
   let status: 'HEALTHY' | 'WARNING' | 'CRITICAL' = 'HEALTHY';
   if (!checks.webUp) status = 'CRITICAL';
-  else if (!checks.n8nUp || !checks.metaTokenSet) status = 'WARNING';
+  else if ((checks.n8nUp !== null && !checks.n8nUp) || !checks.metaTokenSet) status = 'WARNING';
 
   return { status, metrics: checks };
 }

@@ -561,54 +561,53 @@ function AutomationsEmbed() {
 
   useEffect(() => {
     apiFetch('/api/automations/hub-stats')
-      .then(d => setFlows(d?.flows ?? d?.automations ?? []))
+      .then(d => {
+        // Map sequences to automation flow format
+        const seqs = d?.sequences ?? [];
+        const mappedFlows = seqs.map(s => ({
+          id: s.id,
+          name: s.name || s.sequenceName || 'Unnamed Sequence',
+          type: 'sequence',
+          status: s.isActive !== false ? 'active' : 'paused',
+          enrolledCount: s.enrollmentCount || s.enrolled || 0,
+          completedCount: s.completedCount || 0,
+          steps: s.stepCount || s.steps?.length || 0,
+        }));
+        setFlows(mappedFlows);
+      })
       .catch(() => setFlows([]))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="py-12 text-center text-slate-400">Loading automations...</div>;
 
-  if (flows.length === 0) {
-    return (
-      <div className="py-12 text-center">
-        <Zap className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-        <p className="text-slate-500 text-sm">No automation flows configured yet.</p>
-      </div>
-    );
-  }
-
-  const toolColors = {
-    n8n: 'bg-orange-100 text-orange-700',
-    brevo: 'bg-blue-100 text-blue-700',
-    'meta-wa': 'bg-green-100 text-green-700',
-    slack: 'bg-purple-100 text-purple-700',
-    clickup: 'bg-indigo-100 text-indigo-700',
-    calcom: 'bg-sky-100 text-sky-700',
-  };
-
   return (
     <div className="space-y-4">
       <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
         <Zap className="w-4 h-4 text-amber-500" /> Automation Flows ({flows.length})
       </h2>
-      <div className="grid gap-3">
-        {flows.map((flow, i) => (
-          <div key={i} className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <p className="text-sm font-semibold text-slate-800">{flow.name || flow.title || `Flow ${i + 1}`}</p>
-              {flow.active !== false && <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Active</span>}
+      {flows.length === 0 ? (
+        <div className="text-center py-16 text-slate-400">
+          <Zap className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <p>No automation flows configured yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-3 p-4">
+          {flows.map(f => (
+            <div key={f.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-lg">
+              <div>
+                <p className="font-medium text-slate-800">{f.name}</p>
+                <p className="text-xs text-slate-500">{f.steps} steps · {f.enrolledCount} enrolled</p>
+              </div>
+              <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                f.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'
+              }`}>
+                {f.status === 'active' ? 'Active' : 'Paused'}
+              </span>
             </div>
-            {flow.description && <p className="text-xs text-slate-500 mb-2">{flow.description}</p>}
-            <div className="flex gap-1.5 flex-wrap">
-              {(flow.tools || flow.nodes || []).slice(0, 5).map((tool, j) => {
-                const name = typeof tool === 'string' ? tool : tool.type || tool.name || 'unknown';
-                const color = toolColors[name.toLowerCase()] || 'bg-slate-100 text-slate-600';
-                return <span key={j} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${color}`}>{name}</span>;
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
