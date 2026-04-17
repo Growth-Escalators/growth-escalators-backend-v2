@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import https from 'https';
 
 const PIXEL_ID = process.env.META_PIXEL_ID;
-const CAPI_TOKEN = process.env.META_CAPI_TOKEN;
+const CAPI_TOKEN = process.env.META_CAPI_TOKEN || process.env.META_ACCESS_TOKEN;
 const API_VERSION = 'v19.0';
 
 function hashData(value: string): string {

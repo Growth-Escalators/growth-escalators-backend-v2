@@ -25,6 +25,7 @@ const _missingEnvVars: string[] = [];
 if (!process.env.SERPER_API_KEY) _missingEnvVars.push('SERPER_API_KEY (SEO rank tracking, backlinks, content gaps will not work)');
 if (!process.env.META_ADS_TOKEN && !process.env.META_ACCESS_TOKEN) _missingEnvVars.push('META_ADS_TOKEN (Meta Ads daily report will not work)');
 if (!process.env.ANTHROPIC_API_KEY && !process.env.CLAUDE_API_KEY) _missingEnvVars.push('ANTHROPIC_API_KEY (AI intelligence will use fallback mode)');
+if (!process.env.META_PIXEL_ID) _missingEnvVars.push('META_PIXEL_ID (Meta CAPI conversions will not fire — get from Events Manager)');
 if (_missingEnvVars.length > 0) {
   console.warn('[worker] ⚠️ MISSING ENV VARS:');
   for (const v of _missingEnvVars) console.warn(`  • ${v}`);

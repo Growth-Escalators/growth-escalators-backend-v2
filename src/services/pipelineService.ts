@@ -190,7 +190,7 @@ export async function placePipelineContact(params: {
   }
 
   const pipelineRow = await pool.query(
-    `SELECT id, name FROM pipelines WHERE tenant_id = $1 AND name = $2 LIMIT 1`,
+    `SELECT id, name FROM pipelines WHERE tenant_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1`,
     [tenantId, pipelineName],
   );
   if (pipelineRow.rows.length === 0) {
@@ -198,20 +198,51 @@ export async function placePipelineContact(params: {
     return { success: false, pipeline: pipelineName, stage: stageName, tags, contactId };
   }
   const pipelineId = pipelineRow.rows[0].id as string;
+  const actualPipelineName = pipelineRow.rows[0].name as string;
 
   // ---------------------------------------------------------------------------
-  // 2. Upsert into pipeline_contacts
+  // 2. Match stage name to actual pipeline stages (case-insensitive)
+  // ---------------------------------------------------------------------------
+  // The pipeline may have stages like "PAID ₹9" (uppercase) but code generates "Paid ₹9"
+  // Find the actual stage name from the pipeline's stages array
+  let actualStageName = stageName;
+  try {
+    const stagesRow = await pool.query(
+      `SELECT stages FROM pipelines WHERE id = $1 LIMIT 1`,
+      [pipelineId],
+    );
+    const stages = stagesRow.rows[0]?.stages as string[] | undefined;
+    if (stages && stages.length > 0) {
+      const match = stages.find(s => s.toLowerCase() === stageName.toLowerCase());
+      if (match) {
+        actualStageName = match;
+      } else {
+        // Try partial match (e.g., "Paid ₹9" matching "PAID ₹9" by amount)
+        const amountMatch = stageName.match(/₹(\d+)/);
+        if (amountMatch) {
+          const amountStr = amountMatch[1];
+          const partialMatch = stages.find(s => s.includes(amountStr));
+          if (partialMatch) actualStageName = partialMatch;
+        }
+      }
+    }
+  } catch { /* stages lookup non-critical */ }
+
+  logger.info({ contactId, pipeline: actualPipelineName, stage: actualStageName }, '[pipeline] placing contact');
+
+  // ---------------------------------------------------------------------------
+  // 3. Upsert into pipeline_contacts
   // ---------------------------------------------------------------------------
   await pool.query(
     `INSERT INTO pipeline_contacts (contact_id, pipeline_id, pipeline_name, stage_name, tenant_id)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (contact_id, pipeline_id)
      DO UPDATE SET stage_name = EXCLUDED.stage_name, updated_at = NOW()`,
-    [contactId, pipelineId, pipelineName, stageName, tenantId],
+    [contactId, pipelineId, actualPipelineName, actualStageName, tenantId],
   );
 
   // ---------------------------------------------------------------------------
-  // 3. Update existing deal to link to this pipeline (most recent dealless deal)
+  // 4. Update existing deal to link to this pipeline (most recent dealless deal)
   // ---------------------------------------------------------------------------
   await pool.query(
     `UPDATE deals SET pipeline_id = $1, stage = $2, updated_at = NOW()
@@ -220,7 +251,7 @@ export async function placePipelineContact(params: {
        WHERE contact_id = $3 AND pipeline_id IS NULL
        ORDER BY created_at DESC LIMIT 1
      )`,
-    [pipelineId, stageName, contactId],
+    [pipelineId, actualStageName, contactId],
   );
 
   // ---------------------------------------------------------------------------
