@@ -451,7 +451,6 @@ const PLACEMENT_INTERVAL = setInterval(() => safeCron('Pipeline Placement', asyn
         )
       ORDER BY e.created_at ASC
       LIMIT 20
-      FOR UPDATE OF e SKIP LOCKED
     `);
 
     if (rows.length === 0) return;
@@ -819,13 +818,13 @@ cron.schedule('30 3 * * 5', () => safeCron('SEO Backlink Monitor', async () => {
 }), { timezone: 'UTC' });
 console.log('[cron] SEO backlink monitor scheduled — Fridays 9:00 AM IST (backend-native)');
 
-// SEO Content Decay Detection — 1st Monday 9 AM IST (3:30 UTC) — runs directly
-cron.schedule('30 3 1-7 * 1', () => safeCron('SEO Content Decay', async () => {
+// SEO Content Decay Detection — Every Monday 9 AM IST (3:30 UTC) — runs directly
+cron.schedule('30 3 * * 1', () => safeCron('SEO Content Decay', async () => {
   const { runContentDecayDetection } = await import('./services/seoContentDecayService');
   const result = await runContentDecayDetection();
   console.log(`[CRON] SEO Content Decay: ${result.opportunities} decay opportunities found`);
 }), { timezone: 'UTC' });
-console.log('[cron] SEO content decay scheduled — 1st Monday 9:00 AM IST (backend-native)');
+console.log('[cron] SEO content decay scheduled — Every Monday 9:00 AM IST (backend-native)');
 
 // SEO Weekly Opportunity Digest — Friday 5 PM IST (11:30 UTC) — sends via Slack directly
 cron.schedule('30 11 * * 5', () => safeCron('SEO Weekly Digest', async () => {
