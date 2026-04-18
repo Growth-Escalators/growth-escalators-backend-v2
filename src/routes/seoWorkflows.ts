@@ -141,6 +141,28 @@ router.get('/content-decay-stats', async (_req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/seo-workflows/rank-tracking-stats
+// Lightweight stats for the Rank Tracking admin card
+// ---------------------------------------------------------------------------
+router.get('/rank-tracking-stats', async (_req: Request, res: Response) => {
+  try {
+    const [totalQ, recentQ, dropsQ] = await Promise.all([
+      pool.query(`SELECT COUNT(DISTINCT keyword)::int AS keywords FROM keyword_rankings`),
+      pool.query(`SELECT COUNT(*)::int AS count FROM keyword_rankings WHERE recorded_date >= CURRENT_DATE - INTERVAL '7 days'`),
+      pool.query(`SELECT COUNT(*)::int AS count FROM keyword_rankings WHERE position_change < -5 AND recorded_date >= CURRENT_DATE - INTERVAL '7 days'`),
+    ]);
+    res.json({
+      totalKeywords: Number(totalQ.rows[0].keywords),
+      checksLast7d: Number(recentQ.rows[0].count),
+      dropsDetected: Number(dropsQ.rows[0].count),
+    });
+  } catch (e) {
+    logger.error('[seo-workflows] rank-tracking-stats error:', e);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/seo-workflows/backlinks-stats
 // Lightweight stats for the Backlink Monitor admin card
 // ---------------------------------------------------------------------------
