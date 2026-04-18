@@ -16,12 +16,14 @@
 
 import logger from '../utils/logger';
 
-const CRITICAL_ENV_VARS = [
+// All tracked vars. validateEnv() only logs — it never throws, so a missing
+// integration URL cannot take down the whole web server on boot.
+// Per-feature enforcement happens at call time via requiredEnv() inside
+// service wrappers (postizService, shlinkService) — that turns a missing
+// var into a 500/503 on the specific request instead of a crash loop.
+const TRACKED_ENV_VARS = [
   'DATABASE_URL',
   'REDIS_URL',
-] as const;
-
-const IMPORTANT_ENV_VARS = [
   'POSTIZ_BASE_URL',
   'POSTIZ_API_KEY',
   'SHLINK_BASE_URL',
@@ -36,27 +38,12 @@ function isMissing(name: string): boolean {
 }
 
 export function validateEnv(): void {
-  const missingCritical = CRITICAL_ENV_VARS.filter(isMissing);
-  const missingImportant = IMPORTANT_ENV_VARS.filter(isMissing);
-
-  if (missingImportant.length > 0) {
-    logger.warn(
-      { missing: missingImportant },
-      `[env] WARNING: missing integration env vars — related features will fail until set: ${missingImportant.join(', ')}`,
-    );
-  }
-
-  if (missingCritical.length === 0) return;
-
-  if (process.env.NODE_ENV === 'production') {
-    const msg = `[env] FATAL: missing critical environment variables in production: ${missingCritical.join(', ')}`;
-    logger.error(msg);
-    throw new Error(msg);
-  }
+  const missing = TRACKED_ENV_VARS.filter(isMissing);
+  if (missing.length === 0) return;
 
   logger.warn(
-    { missing: missingCritical },
-    `[env] WARNING: missing critical env vars (non-production, continuing): ${missingCritical.join(', ')}`,
+    { missing },
+    `[env] WARNING: missing environment variables — related features will fail until set: ${missing.join(', ')}`,
   );
 }
 
