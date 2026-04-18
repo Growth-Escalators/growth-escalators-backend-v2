@@ -83,18 +83,39 @@ export async function runContentDecayDetection(): Promise<{ opportunities: numbe
       const impact = drop > 20 ? 'high' : drop > 10 ? 'medium' : 'low';
       const effort = currentPos <= 30 ? 'low' : 'medium';
 
-      await pool.query(
+      const positionDrop = currentPos - oldPos;  // this is the drop magnitude (positive number)
+      const impactWeight = impact === 'high' ? 3 : impact === 'medium' ? 2 : 1;
+      const priorityScore = Math.round(positionDrop * impactWeight);
+
+      const insertResult = await pool.query(
         `INSERT INTO seo_opportunities
-          (project_name, client_domain, opportunity_type, description, estimated_impact, effort_level, status)
-         VALUES ($1, $1, 'content_decay', $2, $3, $4, 'open')`,
+          (project_name, client_domain, opportunity_type, description, estimated_impact, effort_level, status, keyword, priority_score)
+         VALUES ($1, $1, 'content_decay', $2, $3, $4, 'open', $5, $6)
+         RETURNING id`,
         [
           domain,
           `"${keyword}" dropped ${drop} positions (was #${oldPos}, now #${currentPos}). ${row.url_ranking ? `Page: ${row.url_ranking}` : 'Review and refresh content.'}`,
           impact,
           effort,
+          keyword,
+          priorityScore,
         ],
       );
       opportunities++;
+
+      const newId = (insertResult.rows[0] as { id: string }).id;
+      try {
+        const { createOpportunityTask } = await import('./seoClickupService');
+        await createOpportunityTask({
+          id: newId,
+          client_domain: domain,
+          opportunity_type: 'content_decay',
+          description: `"${keyword}" dropped ${drop} positions (was #${oldPos}, now #${currentPos})`,
+          estimated_impact: impact,
+          keyword,
+          priority_score: priorityScore,
+        });
+      } catch { /* clickup non-critical */ }
     }
 
     // Also detect pages that fell out of top 100
@@ -133,13 +154,31 @@ export async function runContentDecayDetection(): Promise<{ opportunities: numbe
       );
       if ((existing.rows as unknown[]).length > 0) continue;
 
-      await pool.query(
+      const currentPos = Number(row.current_position);
+      const priorityScore = Math.max(1, 50 - (currentPos ?? 100));
+
+      const lostInsertResult = await pool.query(
         `INSERT INTO seo_opportunities
-          (project_name, client_domain, opportunity_type, description, estimated_impact, effort_level, status)
-         VALUES ($1, $1, 'lost_ranking', $2, 'high', 'medium', 'open')`,
-        [domain, `"${keyword}" lost ranking entirely (was #${row.current_position}, last seen ${new Date(row.recorded_date as string).toLocaleDateString('en-IN')}). Needs content refresh or new backlinks.`],
+          (project_name, client_domain, opportunity_type, description, estimated_impact, effort_level, status, keyword, priority_score)
+         VALUES ($1, $1, 'lost_ranking', $2, 'high', 'medium', 'open', $3, $4)
+         RETURNING id`,
+        [domain, `"${keyword}" lost ranking entirely (was #${row.current_position}, last seen ${new Date(row.recorded_date as string).toLocaleDateString('en-IN')}). Needs content refresh or new backlinks.`, keyword, priorityScore],
       );
       opportunities++;
+
+      const lostNewId = (lostInsertResult.rows[0] as { id: string }).id;
+      try {
+        const { createOpportunityTask } = await import('./seoClickupService');
+        await createOpportunityTask({
+          id: lostNewId,
+          client_domain: domain,
+          opportunity_type: 'lost_ranking',
+          description: `"${keyword}" lost ranking entirely (was #${row.current_position})`,
+          estimated_impact: 'high',
+          keyword,
+          priority_score: priorityScore,
+        });
+      } catch { /* clickup non-critical */ }
     }
   } catch (e) {
     logger.error('[content-decay] error:', e instanceof Error ? e.message : String(e));
