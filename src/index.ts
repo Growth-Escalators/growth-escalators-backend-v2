@@ -397,6 +397,25 @@ async function startServer() {
   import('./services/seoWorkflowHealthService').then(m => m.ensureSeoTables())
     .then(() => import('./services/seoKnowledgeBase').then(m => m.seedClientKnowledgeBase()))
     .catch(e => console.error('[startup] SEO tables/seed failed:', e));
+  // Bootstrap deal activity columns + table
+  pool.query(`
+    ALTER TABLE deals ADD COLUMN IF NOT EXISTS source VARCHAR(100);
+    ALTER TABLE deals ADD COLUMN IF NOT EXISTS probability INTEGER;
+    CREATE TABLE IF NOT EXISTS deal_activities (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL,
+      deal_id UUID NOT NULL,
+      contact_id UUID,
+      activity_type VARCHAR(50) NOT NULL DEFAULT 'note',
+      from_stage VARCHAR(200),
+      to_stage VARCHAR(200),
+      note TEXT,
+      created_by VARCHAR(200),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_deal_activities_deal_id ON deal_activities(deal_id);
+    CREATE INDEX IF NOT EXISTS idx_deal_activities_tenant ON deal_activities(tenant_id);
+  `).catch(e => console.error('[startup] Deal activities bootstrap failed:', e));
   // Bootstrap retainer tables
   import('./services/retainerService').then(m => m.ensureRetainerTables()).catch(e => console.error('[startup] Retainer tables bootstrap failed:', e));
   // Bootstrap audit logs table
