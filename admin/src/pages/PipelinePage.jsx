@@ -30,10 +30,11 @@ function getStageStyle(stageName, index) {
 
 function isTerminalStage(name) {
   const lc = (name ?? '').toLowerCase();
-  return lc.includes('won') || lc.includes('lost');
+  return lc.includes('won') || lc.includes('lost') || lc.includes('abandoned');
 }
 function isWonStage(name) { return (name ?? '').toLowerCase().includes('won'); }
 function isLostStage(name) { return (name ?? '').toLowerCase().includes('lost'); }
+function isAbandonedStage(name) { return (name ?? '').toLowerCase().includes('abandoned'); }
 
 function daysAgo(dateStr) {
   if (!dateStr) return 0;
@@ -171,33 +172,43 @@ const LOST_REASONS = [
 
 function WonLostModal({ stageName, contactName, onConfirm, onCancel }) {
   const won = isWonStage(stageName);
+  const abandoned = isAbandonedStage(stageName);
+  const lost = !won && !abandoned;
   const [lostReason, setLostReason] = useState('');
   const [notes, setNotes] = useState('');
-  const canConfirm = won || !!lostReason;
+  const canConfirm = won || abandoned || !!lostReason;
+
+  const iconBg = won ? 'bg-emerald-100' : abandoned ? 'bg-amber-100' : 'bg-red-100';
+  const icon = won ? (
+    <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+  ) : abandoned ? (
+    <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+  ) : (
+    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+  );
+  const title = won ? 'Deal Won!' : abandoned ? 'Mark as Abandoned?' : 'Why was this deal lost?';
+  const btnClass = won ? 'bg-emerald-600 hover:bg-emerald-700' : abandoned ? 'bg-amber-500 hover:bg-amber-600' : 'bg-red-600 hover:bg-red-700';
+  const btnLabel = won ? 'Save & Confirm' : abandoned ? 'Mark Abandoned' : 'Mark as Lost';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div className="px-6 pt-6 pb-4">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${won ? 'bg-emerald-100' : 'bg-red-100'}`}>
-            {won ? (
-              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-            ) : (
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-            )}
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${iconBg}`}>
+            {icon}
           </div>
-          <h2 className="text-lg font-bold text-slate-900">
-            {won ? 'Deal Won!' : 'Why was this deal lost?'}
-          </h2>
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
           <p className="text-sm text-slate-500 mt-1">
             {contactName} &rarr; <span className="font-medium text-slate-700">{stageName}</span>
           </p>
 
-          {!won && (
+          {lost && (
             <div className="mt-4">
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Reason <span className="text-red-500">*</span>
@@ -238,9 +249,9 @@ function WonLostModal({ stageName, contactName, onConfirm, onCancel }) {
           <button
             onClick={() => onConfirm(lostReason || null, notes || null)}
             disabled={!canConfirm}
-            className={`px-5 py-2 text-sm font-semibold text-white rounded-lg transition-colors disabled:opacity-50 ${won ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}
+            className={`px-5 py-2 text-sm font-semibold text-white rounded-lg transition-colors disabled:opacity-50 ${btnClass}`}
           >
-            {won ? 'Save & Confirm' : 'Mark as Lost'}
+            {btnLabel}
           </button>
         </div>
       </div>
@@ -257,6 +268,7 @@ function AddDealModal({ pipelineId, stageName, onAdded, onClose }) {
   const [selectedContact, setSelectedContact] = useState(null);
   const [dealValue, setDealValue] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
+  const [source, setSource] = useState('');
   const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
 
@@ -283,6 +295,7 @@ function AddDealModal({ pipelineId, stageName, onAdded, onClose }) {
         title: `${selectedContact.firstName} ${selectedContact.lastName ?? ''} — opportunity`.trim(),
         ...(dealValue ? { dealValue: parseInt(dealValue, 10) } : {}),
         ...(assignedTo ? { assignedTo } : {}),
+        ...(source ? { source } : {}),
       }),
     });
     setSaving(false);
@@ -363,6 +376,22 @@ function AddDealModal({ pipelineId, stageName, onAdded, onClose }) {
               <option value="saksham">Saksham</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Source <span className="text-slate-400 font-normal">(optional)</span></label>
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Unknown</option>
+              <option value="form">Website Form</option>
+              <option value="paid_ad">Paid Ad</option>
+              <option value="referral">Referral</option>
+              <option value="cold_outreach">Cold Outreach</option>
+              <option value="checkout">Checkout</option>
+              <option value="inbound">Inbound Call</option>
+            </select>
+          </div>
         </div>
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-white">Cancel</button>
@@ -381,6 +410,215 @@ function AddDealModal({ pipelineId, stageName, onAdded, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
+// Deal Detail Slide-In
+// ---------------------------------------------------------------------------
+const SOURCE_LABELS = {
+  form: 'Website Form', paid_ad: 'Paid Ad', referral: 'Referral',
+  cold_outreach: 'Cold Outreach', checkout: 'Checkout', inbound: 'Inbound Call',
+};
+
+function DealDetailSlideIn({ dealId, onClose, onViewContact, onUpdated }) {
+  const [deal, setDeal] = useState(null);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [noteText, setNoteText] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+
+  const loadActivities = useCallback(async () => {
+    const acts = await apiFetch(`/deals/${dealId}/activities`);
+    setActivities(Array.isArray(acts) ? acts : []);
+  }, [dealId]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    setLoading(true);
+    Promise.all([
+      apiFetch(`/deals/${dealId}`),
+      apiFetch(`/deals/${dealId}/activities`),
+    ]).then(([d, acts]) => {
+      setDeal(d);
+      setActivities(Array.isArray(acts) ? acts : []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [dealId]);
+
+  async function addNote() {
+    if (!noteText.trim()) return;
+    setAddingNote(true);
+    await apiFetch(`/deals/${dealId}/activities`, {
+      method: 'POST',
+      body: JSON.stringify({ note: noteText, activityType: 'note' }),
+    });
+    setNoteText('');
+    await loadActivities();
+    setAddingNote(false);
+  }
+
+  function fmtDate(d) {
+    if (!d) return '—';
+    return new Date(d).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  return (
+    <div className="fixed inset-y-0 right-0 z-40 w-full max-w-md bg-white shadow-2xl flex flex-col border-l border-slate-200">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between shrink-0">
+        <div className="flex-1 mr-3">
+          {loading ? (
+            <div className="h-5 w-32 bg-slate-200 rounded animate-pulse mb-1"/>
+          ) : (
+            <>
+              <h2 className="text-base font-bold text-slate-900 leading-tight">
+                {deal?.first_name} {deal?.last_name ?? ''}
+              </h2>
+              {deal?.company_name && <p className="text-sm text-slate-400">{deal.company_name}</p>}
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {deal?.contact_id && (
+            <button
+              onClick={() => onViewContact(deal)}
+              className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:bg-blue-50 px-2.5 py-1 rounded-lg"
+            >
+              View Contact
+            </button>
+          )}
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
+        </div>
+      ) : !deal ? (
+        <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">Deal not found</div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          {/* Deal stats grid */}
+          <div className="px-5 py-4 grid grid-cols-2 gap-3 border-b border-slate-100 bg-slate-50">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Value</p>
+              <p className="text-lg font-bold text-green-600">{fmtInr(deal.deal_value) || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Stage</p>
+              <span className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">{deal.stage}</span>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Source</p>
+              <p className="text-sm text-slate-600">{SOURCE_LABELS[deal.source] ?? deal.source ?? '—'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Assigned To</p>
+              <p className="text-sm text-slate-600">{deal.assigned_to ?? '—'}</p>
+            </div>
+            {deal.probability != null && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Probability</p>
+                <p className="text-sm font-semibold text-blue-600">{deal.probability}%</p>
+              </div>
+            )}
+            {deal.expected_close_date && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Expected Close</p>
+                <p className="text-sm text-slate-600">{new Date(deal.expected_close_date).toLocaleDateString('en-IN')}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Pipeline</p>
+              <p className="text-sm text-slate-600">{deal.pipeline_name ?? '—'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Created</p>
+              <p className="text-sm text-slate-600">{new Date(deal.created_at).toLocaleDateString('en-IN')}</p>
+            </div>
+          </div>
+
+          {/* Notes */}
+          {deal.notes && (
+            <div className="px-5 py-3 border-b border-slate-100">
+              <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-1.5">Deal Notes</p>
+              <p className="text-sm text-slate-600">{deal.notes}</p>
+            </div>
+          )}
+          {deal.lost_reason && (
+            <div className="px-5 py-3 border-b border-slate-100 bg-red-50">
+              <p className="text-[10px] uppercase tracking-wide text-red-400 mb-1">Lost Reason</p>
+              <p className="text-sm text-red-700 font-medium">{deal.lost_reason}</p>
+            </div>
+          )}
+
+          {/* Activity Timeline */}
+          <div className="px-5 py-4">
+            <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-3 font-semibold">Activity Timeline</p>
+            {activities.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6">No activity yet</p>
+            ) : (
+              <div className="relative">
+                <div className="absolute left-2.5 top-0 bottom-0 w-px bg-slate-200"/>
+                <div className="space-y-4 pl-8">
+                  {activities.map((a, i) => (
+                    <div key={i} className="relative">
+                      <div className="absolute -left-[22px] w-5 h-5 rounded-full bg-white border-2 flex items-center justify-center"
+                        style={{ borderColor: a.activity_type === 'stage_change' ? '#3b82f6' : '#64748b' }}>
+                        {a.activity_type === 'stage_change' ? (
+                          <svg className="w-2.5 h-2.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                          </svg>
+                        ) : (
+                          <svg className="w-2.5 h-2.5 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="4"/>
+                          </svg>
+                        )}
+                      </div>
+                      <div>
+                        {a.activity_type === 'stage_change' ? (
+                          <p className="text-sm text-slate-700">
+                            Moved <span className="font-medium text-slate-500">{a.from_stage}</span>
+                            {' → '}
+                            <span className="font-semibold text-slate-800">{a.to_stage}</span>
+                          </p>
+                        ) : (
+                          <p className="text-sm text-slate-700">{a.note}</p>
+                        )}
+                        <p className="text-[11px] text-slate-400 mt-0.5">{fmtDate(a.created_at)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add Note */}
+            <div className="mt-5 pt-4 border-t border-slate-100">
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                rows={3}
+                placeholder="Add a note…"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50"
+              />
+              <button
+                onClick={addNote}
+                disabled={addingNote || !noteText.trim()}
+                className="mt-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50 transition-colors"
+              >
+                {addingNote ? 'Saving…' : 'Add Note'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main PipelinePage
 // ---------------------------------------------------------------------------
 export default function PipelinePage() {
@@ -389,6 +627,7 @@ export default function PipelinePage() {
   const [showArchived, setShowArchived] = useState(false);
   const [kanbanStages, setKanbanStages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDealId, setSelectedDealId] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const [wonLostModal, setWonLostModal] = useState(null);
   const [addDealModal, setAddDealModal] = useState(null);
@@ -486,13 +725,18 @@ export default function PipelinePage() {
     });
   }
 
-  function openContact(deal) {
-    const nameParts = (deal.contactName ?? '').split(' ');
+  function openDeal(deal) {
+    setSelectedDealId(deal.id);
+    setSelectedContact(null);
+  }
+
+  function openContactFromDeal(deal) {
+    const nameParts = (deal.first_name ? [deal.first_name, deal.last_name].filter(Boolean) : (deal.contactName ?? '').split(' '));
     setSelectedContact({
-      id: deal.contactId,
+      id: deal.contact_id ?? deal.contactId,
       firstName: nameParts[0] ?? '',
       lastName: nameParts.slice(1).join(' ') || null,
-      companyName: deal.companyName ?? null,
+      companyName: deal.company_name ?? deal.companyName ?? null,
       score: deal.score ?? 0,
     });
   }
@@ -672,7 +916,7 @@ export default function PipelinePage() {
                               key={deal.id}
                               deal={deal}
                               index={index}
-                              onClick={() => openContact(deal)}
+                              onClick={() => openDeal(deal)}
                               onArchive={() => archiveDeal(deal.id, true)}
                               onUnarchive={() => archiveDeal(deal.id, false)}
                             />
@@ -717,6 +961,15 @@ export default function PipelinePage() {
           stageName={addDealModal.stageName}
           onAdded={handleDealAdded}
           onClose={() => setAddDealModal(null)}
+        />
+      )}
+
+      {selectedDealId && !selectedContact && (
+        <DealDetailSlideIn
+          dealId={selectedDealId}
+          onClose={() => setSelectedDealId(null)}
+          onViewContact={openContactFromDeal}
+          onUpdated={loadDeals}
         />
       )}
 

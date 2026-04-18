@@ -1,7 +1,7 @@
 import logger from '../utils/logger';
 import { Router } from 'express';
 import { eq, and, sql } from 'drizzle-orm';
-import { db, deals, contacts, pipelines } from '../db/index';
+import { db, pool, deals, contacts, pipelines } from '../db/index';
 import { createOnboardingTask, createFollowUpTask, createLostDealAnalysisTask } from '../services/clickupService';
 
 const router = Router();
@@ -57,7 +57,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
   const tenantId = req.user!.tenantId;
-  const { contactId, title, stage, value, dealValue, serviceType, pipelineId, assignedTo, notes, lostReason, wonNotes, metadata } = req.body;
+  const { contactId, title, stage, value, dealValue, serviceType, pipelineId, assignedTo, notes, lostReason, wonNotes, metadata, source, probability } = req.body;
 
   if (!contactId || !title) {
     res.status(400).json({ error: 'contactId and title are required' });
@@ -94,6 +94,17 @@ router.post('/', async (req, res) => {
   await db.update(contacts).set({ lastActivityAt: new Date(), updatedAt: new Date() })
     .where(eq(contacts.id, contactId));
 
+  // Set source/probability via raw SQL (runtime columns, not in schema)
+  if ((source !== undefined || probability !== undefined) && inserted[0]?.id) {
+    const setClauses: string[] = [];
+    const vals: unknown[] = [];
+    let idx = 1;
+    if (source !== undefined) { setClauses.push(`source = $${idx++}`); vals.push(source); }
+    if (probability !== undefined) { setClauses.push(`probability = $${idx++}`); vals.push(probability); }
+    vals.push(inserted[0].id);
+    pool.query(`UPDATE deals SET ${setClauses.join(', ')} WHERE id = $${idx}`, vals).catch(() => {});
+  }
+
   res.status(201).json(inserted[0]);
   } catch (e: unknown) {
     logger.error('[deals] POST / error:', e);
@@ -110,7 +121,7 @@ router.patch('/:id', async (req, res) => {
   try {
   const { id } = req.params;
   const tenantId = req.user!.tenantId;
-  const { stage, value, dealValue, lostReason, wonNotes, closedAt, metadata, assignedTo, pipelineId, notes } = req.body;
+  const { stage, value, dealValue, lostReason, wonNotes, closedAt, metadata, assignedTo, pipelineId, notes, source, probability } = req.body;
 
   // Get current deal to check stage change
   const existing = await db.select().from(deals).where(and(eq(deals.id, id), eq(deals.tenantId, tenantId))).limit(1);
@@ -139,6 +150,26 @@ router.patch('/:id', async (req, res) => {
   }
 
   const updated = await db.update(deals).set(updates).where(eq(deals.id, id)).returning();
+
+  // Update source/probability via raw SQL (columns added at runtime, not in schema)
+  if (source !== undefined || probability !== undefined) {
+    const setClauses: string[] = [];
+    const vals: unknown[] = [];
+    let idx = 1;
+    if (source !== undefined) { setClauses.push(`source = $${idx++}`); vals.push(source); }
+    if (probability !== undefined) { setClauses.push(`probability = $${idx++}`); vals.push(probability); }
+    vals.push(id);
+    await pool.query(`UPDATE deals SET ${setClauses.join(', ')} WHERE id = $${idx}`, vals);
+  }
+
+  // Log stage change to deal_activities
+  if (stage !== undefined && stage !== existing[0].stage) {
+    pool.query(
+      `INSERT INTO deal_activities (tenant_id, deal_id, contact_id, activity_type, from_stage, to_stage, created_by)
+       VALUES ($1, $2, $3, 'stage_change', $4, $5, 'system')`,
+      [tenantId, id, existing[0].contactId, existing[0].stage, stage],
+    ).catch(() => {});
+  }
 
   // Update contact lastActivityAt when stage changes
   if (stage !== undefined && stage !== existing[0].stage) {
@@ -363,6 +394,73 @@ router.get('/export', async (req, res) => {
   } catch (e: unknown) {
     logger.error('[deals] export error:', e);
     res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /deals/:id — fetch single deal with contact + pipeline info
+// ---------------------------------------------------------------------------
+router.get('/:id', async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.user!.tenantId;
+  try {
+    const result = await pool.query(`
+      SELECT d.*,
+        c.first_name, c.last_name, c.email, c.phone, c.company_name,
+        p.name AS pipeline_name, p.color AS pipeline_color
+      FROM deals d
+      LEFT JOIN contacts c ON c.id = d.contact_id
+      LEFT JOIN pipelines p ON p.id = d.pipeline_id
+      WHERE d.id = $1 AND d.tenant_id = $2
+    `, [id, tenantId]);
+    if (!result.rows[0]) { res.status(404).json({ error: 'deal not found' }); return; }
+    res.json(result.rows[0]);
+  } catch (e) {
+    logger.error('[deals] GET /:id error:', e);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /deals/:id/activities — fetch activity timeline for a deal
+// ---------------------------------------------------------------------------
+router.get('/:id/activities', async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.user!.tenantId;
+  try {
+    const result = await pool.query(`
+      SELECT * FROM deal_activities
+      WHERE deal_id = $1 AND tenant_id = $2
+      ORDER BY created_at ASC
+    `, [id, tenantId]);
+    res.json(result.rows);
+  } catch (e) {
+    logger.error('[deals] GET /:id/activities error:', e);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /deals/:id/activities — add a note or manual activity to a deal
+// ---------------------------------------------------------------------------
+router.post('/:id/activities', async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.user!.tenantId;
+  const { note, activityType = 'note' } = req.body as { note?: string; activityType?: string };
+  if (!note?.trim()) { res.status(400).json({ error: 'note is required' }); return; }
+  try {
+    const deal = await db.select({ contactId: deals.contactId })
+      .from(deals).where(and(eq(deals.id, id), eq(deals.tenantId, tenantId))).limit(1);
+    if (!deal[0]) { res.status(404).json({ error: 'deal not found' }); return; }
+    await pool.query(
+      `INSERT INTO deal_activities (tenant_id, deal_id, contact_id, activity_type, note, created_by)
+       VALUES ($1, $2, $3, $4, $5, 'admin')`,
+      [tenantId, id, deal[0].contactId, activityType, note.trim()],
+    );
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    logger.error('[deals] POST /:id/activities error:', e);
+    res.status(500).json({ error: 'internal server error' });
   }
 });
 
