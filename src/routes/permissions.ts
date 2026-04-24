@@ -76,6 +76,27 @@ router.get('/users/:userId', async (req: Request, res: Response) => {
   }
 });
 
+// Only these keys are allowed in a permissions update — strips DB metadata (id, createdAt, updatedAt, etc.)
+const PERM_KEYS = [
+  'contactsView', 'contactsCreate', 'contactsEdit', 'contactsDelete', 'contactsExport', 'contactsBulk',
+  'pipelineView', 'pipelineCreate', 'pipelineEdit', 'pipelineDelete', 'pipelineManage',
+  'billingView', 'billingCreate', 'billingEdit', 'billingMarkPaid', 'billingViewMrr', 'billingDownload', 'billingManageClients',
+  'automationsView', 'automationsTrigger',
+  'reportsView', 'reportsMetaAds',
+  'settingsUsers', 'settingsPipelines', 'settingsTemplates', 'settingsBilling',
+  'isOwner',
+] as const;
+
+type PermKey = typeof PERM_KEYS[number];
+
+function sanitizePerms(body: Record<string, unknown>): Partial<Record<PermKey, boolean>> & { updatedAt: Date } {
+  const out: Partial<Record<PermKey, boolean>> & { updatedAt: Date } = { updatedAt: new Date() };
+  for (const key of PERM_KEYS) {
+    if (key in body) (out as Record<string, unknown>)[key] = Boolean(body[key]);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // PUT /api/permissions/users/:userId
 // ---------------------------------------------------------------------------
@@ -94,18 +115,19 @@ router.put('/users/:userId', async (req: Request, res: Response) => {
   }
 
   try {
+    const sanitized = sanitizePerms(req.body as Record<string, unknown>);
     const [existing] = await db.select().from(userPermissions)
       .where(eq(userPermissions.userId, targetUserId)).limit(1);
 
     let result;
     if (existing) {
       [result] = await db.update(userPermissions)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set(sanitized)
         .where(eq(userPermissions.userId, targetUserId))
         .returning();
     } else {
       [result] = await db.insert(userPermissions)
-        .values({ ...req.body, userId: targetUserId, tenantId })
+        .values({ ...sanitized, userId: targetUserId, tenantId })
         .returning();
     }
 
