@@ -63,6 +63,8 @@ import intelligenceChatRouter from './routes/intelligenceChat';
 import clientDetailRouter from './routes/clientDetail';
 import selfServiceRouter from './routes/selfService';
 import tasksRouter from './routes/tasks';
+import taskListsRouter from './routes/task-lists';
+import teamRouter from './routes/team';
 import { requireAuth, optionalAuth } from './middleware/auth';
 import { validateEnv } from './config/env';
 
@@ -180,6 +182,8 @@ app.use('/api/intelligence', requireAuth, intelligenceChatRouter);
 app.use('/api/clients', requireAuth, clientDetailRouter);
 app.use('/api/self-service', requireAuth, selfServiceRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
+app.use('/api/task-lists', requireAuth, taskListsRouter);
+app.use('/api/team', requireAuth, teamRouter);
 app.use('/api/funnel', funnelRouter);
 // Public funnel config endpoint (no auth — used by checkout frontend)
 app.get('/api/funnel-configs/public/:slug', (req, res, next) => { funnelConfigRouter(req, res, next); });

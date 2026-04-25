@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Plus, X, Trash2, CheckCircle2, Circle, Calendar, User, Edit3 } from 'lucide-react';
+import { Plus, X, Trash2, Calendar, User, ChevronDown } from 'lucide-react';
 import Sidebar from '../components/Sidebar.jsx';
-import { apiFetch, getUser } from '../lib/api.js';
+import TodoSidebar from '../components/TodoSidebar.jsx';
+import { apiFetch } from '../lib/api.js';
 
 const COLUMNS = [
   { key: 'not_started', label: 'Not Started', color: '#64748b', light: 'bg-slate-50 border-slate-200' },
@@ -37,19 +38,89 @@ function isOverdue(t) {
   return new Date(t.dueAt).getTime() < Date.now() - 24 * 3600 * 1000;
 }
 
-function isDueToday(t) {
-  if (!t.dueAt) return false;
-  const d = new Date(t.dueAt);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear()
-    && d.getMonth() === now.getMonth()
-    && d.getDate() === now.getDate();
+// Resolve the user-facing display for tasks.assignedTo. New rows store the
+// teammate's UUID (looked up in `team`); legacy rows may store a free-text
+// name like "Jatin" or an email — fall back to that string.
+function displayAssignee(rawValue, team) {
+  if (!rawValue) return null;
+  const member = team.find((m) => m.id === rawValue || m.email === rawValue);
+  return member?.name || rawValue;
+}
+
+// ---------------------------------------------------------------------------
+// AssigneeMenu — small inline dropdown used on Kanban cards. Lets the user
+// reassign a task to a teammate without opening the modal.
+// ---------------------------------------------------------------------------
+function AssigneeMenu({ task, team, onAssigned }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  async function pick(value) {
+    setOpen(false);
+    try {
+      const { task: updated } = await apiFetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ assignedTo: value }),
+      });
+      onAssigned(updated);
+    } catch (e) {
+      alert(`Couldn't assign: ${e.message}`);
+    }
+  }
+
+  const label = displayAssignee(task.assignedTo, team) || 'Unassigned';
+
+  return (
+    <div ref={ref} className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-medium ${
+          task.assignedTo
+            ? 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+        }`}
+      >
+        <User className="w-3 h-3" /> {label} <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg py-1 max-h-60 overflow-y-auto">
+          <button
+            onClick={() => pick(null)}
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Unassigned
+          </button>
+          <div className="border-t border-slate-100 my-0.5" />
+          {team.length === 0 ? (
+            <p className="px-3 py-1.5 text-xs text-slate-400">No teammates found</p>
+          ) : team.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => pick(m.id)}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-sky-50 ${
+                task.assignedTo === m.id ? 'bg-sky-50 text-sky-800 font-medium' : 'text-slate-700'
+              }`}
+            >
+              {m.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Card (used in both Kanban and the right-side checklist)
 // ---------------------------------------------------------------------------
-function TaskCard({ task, index, onOpen }) {
+function TaskCard({ task, index, team, onOpen, onAssigned }) {
   const overdue = isOverdue(task);
   return (
     <Draggable draggableId={task.id} index={index}>
@@ -75,11 +146,7 @@ function TaskCard({ task, index, onOpen }) {
                 <Calendar className="w-3 h-3" /> {fmtDueAt(task.dueAt)}
               </span>
             )}
-            {task.assignedTo && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-medium">
-                <User className="w-3 h-3" /> {task.assignedTo}
-              </span>
-            )}
+            <AssigneeMenu task={task} team={team} onAssigned={onAssigned} />
             {task.contactName && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-medium">
                 {task.contactName}
@@ -95,7 +162,7 @@ function TaskCard({ task, index, onOpen }) {
 // ---------------------------------------------------------------------------
 // Add / Edit modal
 // ---------------------------------------------------------------------------
-function TaskModal({ task, onClose, onSaved, onDeleted }) {
+function TaskModal({ task, team, onClose, onSaved, onDeleted }) {
   const isEdit = !!task?.id;
   const [title, setTitle] = useState(task?.title ?? '');
   const [description, setDescription] = useState(task?.description ?? '');
@@ -117,7 +184,7 @@ function TaskModal({ task, onClose, onSaved, onDeleted }) {
       const body = {
         title: title.trim(),
         description: description.trim() || null,
-        assignedTo: assignedTo.trim() || null,
+        assignedTo: assignedTo || null,
         dueAt: dueAt ? new Date(dueAt).toISOString() : null,
         status,
       };
@@ -202,12 +269,20 @@ function TaskModal({ task, onClose, onSaved, onDeleted }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Assigned to</label>
-            <input
+            <select
               value={assignedTo}
               onChange={(e) => setAssignedTo(e.target.value)}
-              placeholder="Name or email"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-200"
-            />
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-200"
+            >
+              <option value="">Unassigned</option>
+              {team.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+              {/* If the existing value isn't a known teammate (legacy free-text), keep it visible */}
+              {assignedTo && !team.some((m) => m.id === assignedTo) && (
+                <option value={assignedTo}>{assignedTo}</option>
+              )}
+            </select>
           </div>
           {error && <p className="text-xs text-red-600">{error}</p>}
         </div>
@@ -250,18 +325,21 @@ function TaskModal({ task, onClose, onSaved, onDeleted }) {
 // Main page
 // ---------------------------------------------------------------------------
 export default function TasksBoardPage() {
-  const user = getUser();
   const [tasks, setTasks] = useState([]);
+  const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modalTask, setModalTask] = useState(null); // null=closed, {} = new, {id...} = edit
-  const [checklistFilter, setChecklistFilter] = useState('mine'); // mine | all | today
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch('/api/tasks');
-      setTasks(data.tasks ?? []);
+      const [tasksResp, teamResp] = await Promise.all([
+        apiFetch('/api/tasks'),
+        apiFetch('/api/team').catch(() => ({ team: [] })),
+      ]);
+      setTasks(tasksResp.tasks ?? []);
+      setTeam(teamResp.team ?? []);
       setError('');
     } catch (e) {
       setError(e.message || 'Failed to load tasks');
@@ -305,20 +383,6 @@ export default function TasksBoardPage() {
     }
   }
 
-  async function toggleChecklist(task) {
-    const newStatus = task.status === 'done' ? 'not_started' : 'done';
-    setTasks((ts) => ts.map((t) => t.id === task.id ? { ...t, status: newStatus } : t));
-    try {
-      await apiFetch(`/api/tasks/${task.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: newStatus }),
-      });
-    } catch (e) {
-      setTasks((ts) => ts.map((t) => t.id === task.id ? { ...t, status: task.status } : t));
-      alert(`Update failed: ${e.message}`);
-    }
-  }
-
   const tasksByColumn = useMemo(() => {
     const map = Object.fromEntries(COLUMNS.map((c) => [c.key, []]));
     for (const t of tasks) {
@@ -327,26 +391,6 @@ export default function TasksBoardPage() {
     }
     return map;
   }, [tasks]);
-
-  const checklistTasks = useMemo(() => {
-    const base = tasks.filter((t) => t.status !== 'done');
-    const matchesMine = (t) => {
-      if (!user) return true;
-      const val = (t.assignedTo || '').toLowerCase();
-      return val === (user.email || '').toLowerCase() || val === (user.name || '').toLowerCase() || !t.assignedTo;
-    };
-    const filtered = checklistFilter === 'mine' ? base.filter(matchesMine)
-      : checklistFilter === 'today' ? base.filter(isDueToday)
-      : base;
-    return filtered.sort((a, b) => {
-      if (isOverdue(a) && !isOverdue(b)) return -1;
-      if (!isOverdue(a) && isOverdue(b)) return 1;
-      if (a.dueAt && !b.dueAt) return -1;
-      if (!a.dueAt && b.dueAt) return 1;
-      if (a.dueAt && b.dueAt) return new Date(a.dueAt) - new Date(b.dueAt);
-      return 0;
-    });
-  }, [tasks, checklistFilter, user]);
 
   const doneCount = tasks.filter((t) => t.status === 'done').length;
   const totalCount = tasks.length;
@@ -415,7 +459,9 @@ export default function TasksBoardPage() {
                                 key={t.id}
                                 task={t}
                                 index={i}
+                                team={team}
                                 onOpen={() => setModalTask(t)}
+                                onAssigned={(updated) => upsertTask(updated)}
                               />
                             ))}
                             {provided.placeholder}
@@ -440,100 +486,20 @@ export default function TasksBoardPage() {
             </DragDropContext>
           </div>
 
-          {/* Right: Checklist */}
-          <aside className="w-[340px] shrink-0 border-l border-slate-200 bg-white flex flex-col">
-            <div className="px-4 py-3 border-b border-slate-200 shrink-0">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-semibold text-slate-800">Checklist</h2>
-                <span className="text-[11px] text-slate-500">
-                  {checklistTasks.length} open
-                </span>
-              </div>
-              <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5">
-                {[
-                  { key: 'mine', label: 'Mine' },
-                  { key: 'today', label: 'Today' },
-                  { key: 'all', label: 'All' },
-                ].map((opt) => (
-                  <button
-                    key={opt.key}
-                    onClick={() => setChecklistFilter(opt.key)}
-                    className={`flex-1 text-xs font-medium py-1 rounded-md transition-colors ${
-                      checklistFilter === opt.key
-                        ? 'bg-white text-slate-800 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto px-2 py-2">
-              {loading ? (
-                <p className="text-center text-xs text-slate-400 py-8">Loading…</p>
-              ) : checklistTasks.length === 0 ? (
-                <div className="text-center py-10 px-4">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                  <p className="text-xs text-slate-500">
-                    {checklistFilter === 'mine' ? 'Nothing on your plate.' : checklistFilter === 'today' ? 'Nothing due today.' : 'All clear.'}
-                  </p>
-                </div>
-              ) : (
-                <ul className="space-y-1">
-                  {checklistTasks.map((t) => {
-                    const overdue = isOverdue(t);
-                    return (
-                      <li
-                        key={t.id}
-                        className="group flex items-start gap-2 px-2 py-2 rounded-lg hover:bg-slate-50"
-                      >
-                        <button
-                          onClick={() => toggleChecklist(t)}
-                          aria-label={t.status === 'done' ? 'Mark as not done' : 'Mark as done'}
-                          className="shrink-0 mt-0.5"
-                        >
-                          {t.status === 'done' ? (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                          ) : (
-                            <Circle className="w-5 h-5 text-slate-300 hover:text-sky-500 transition-colors" />
-                          )}
-                        </button>
-                        <div className="min-w-0 flex-1" onClick={() => setModalTask(t)} role="button">
-                          <p className={`text-sm leading-tight ${t.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-                            {t.title}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500">
-                            {t.dueAt && (
-                              <span className={overdue ? 'text-red-600 font-medium' : ''}>
-                                <Calendar className="w-3 h-3 inline -mt-0.5" /> {fmtDueAt(t.dueAt)}
-                              </span>
-                            )}
-                            {t.assignedTo && (
-                              <span><User className="w-3 h-3 inline -mt-0.5" /> {t.assignedTo}</span>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => setModalTask(t)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-700 transition-opacity"
-                          aria-label="Edit task"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </aside>
+          {/* Right: To-Do workspace (lists + checklist subitems) */}
+          <TodoSidebar
+            tasks={tasks}
+            onTaskCreated={(t) => upsertTask(t)}
+            onTaskUpdated={(t) => upsertTask(t)}
+            onTaskDeleted={(id) => removeTask(id)}
+          />
         </div>
       </div>
 
       {modalTask !== null && (
         <TaskModal
           task={modalTask}
+          team={team}
           onClose={() => setModalTask(null)}
           onSaved={(t) => { upsertTask(t); setModalTask(null); }}
           onDeleted={(id) => { removeTask(id); setModalTask(null); }}
