@@ -344,6 +344,7 @@ export const tasks = pgTable('tasks', {
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   contactId: uuid('contact_id').references(() => contacts.id),
   dealId: uuid('deal_id').references(() => deals.id),
+  listId: uuid('list_id'),
   title: text('title').notNull(),
   description: text('description'),
   assignedTo: text('assigned_to'),
@@ -352,6 +353,44 @@ export const tasks = pgTable('tasks', {
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// TABLE 14a — task_lists (Microsoft To-Do-style user-created lists)
+// ---------------------------------------------------------------------------
+export const taskLists = pgTable(
+  'task_lists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    ownerId: uuid('owner_id').notNull(),
+    name: text('name').notNull(),
+    position: integer('position').default(0),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (t) => ({
+    tenantOwnerIdx: index('task_lists_tenant_owner_idx').on(t.tenantId, t.ownerId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// TABLE 14b — task_checklist_items (subitems hanging off a task)
+// ---------------------------------------------------------------------------
+export const taskChecklistItems = pgTable(
+  'task_checklist_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    isDone: boolean('is_done').default(false),
+    position: integer('position').default(0),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (t) => ({
+    taskIdx: index('task_checklist_items_task_idx').on(t.taskId),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // TABLE 15 — funnels  (round-robin booking rotation)

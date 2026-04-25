@@ -1,7 +1,7 @@
 import logger from '../utils/logger';
 import { Router } from 'express';
-import { eq, and, inArray, desc, sql } from 'drizzle-orm';
-import { db, tasks, contacts, deals } from '../db/index';
+import { eq, and, inArray, desc, asc, isNull, sql } from 'drizzle-orm';
+import { db, tasks, contacts, deals, taskChecklistItems } from '../db/index';
 
 const router = Router();
 
@@ -25,11 +25,13 @@ function normalizeStatus(raw: string | null | undefined): ColumnStatus {
 // ---------------------------------------------------------------------------
 router.get('/', async (req, res) => {
   const tenantId = req.user!.tenantId;
-  const { status, assignedTo, limit = '500' } = req.query as Record<string, string>;
+  const { status, assignedTo, listId, limit = '500' } = req.query as Record<string, string>;
 
   const conditions = [eq(tasks.tenantId, tenantId)];
   if (status && isColumnStatus(status)) conditions.push(eq(tasks.status, status));
   if (assignedTo) conditions.push(eq(tasks.assignedTo, assignedTo));
+  if (listId === 'none') conditions.push(isNull(tasks.listId));
+  else if (listId) conditions.push(eq(tasks.listId, listId));
 
   try {
     const rows = await db
@@ -72,7 +74,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const tenantId = req.user!.tenantId;
-    const { title, description, assignedTo, dueAt, status, contactId, dealId } = req.body ?? {};
+    const { title, description, assignedTo, dueAt, status, contactId, dealId, listId } = req.body ?? {};
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       res.status(400).json({ error: 'title is required' });
@@ -97,6 +99,7 @@ router.post('/', async (req, res) => {
         status: startStatus,
         contactId: contactId || null,
         dealId: dealId || null,
+        listId: listId || null,
       })
       .returning();
 
@@ -114,7 +117,7 @@ router.patch('/:id', async (req, res) => {
   try {
     const tenantId = req.user!.tenantId;
     const { id } = req.params;
-    const { title, description, assignedTo, dueAt, status, contactId, dealId } = req.body ?? {};
+    const { title, description, assignedTo, dueAt, status, contactId, dealId, listId } = req.body ?? {};
 
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     if (title !== undefined) {
@@ -147,6 +150,7 @@ router.patch('/:id', async (req, res) => {
     }
     if (contactId !== undefined) patch.contactId = contactId || null;
     if (dealId !== undefined) patch.dealId = dealId || null;
+    if (listId !== undefined) patch.listId = listId || null;
 
     const [updated] = await db
       .update(tasks)
@@ -209,6 +213,139 @@ router.post('/bulk-status', async (req, res) => {
     res.json({ ok: true, updated: result.length });
   } catch (err) {
     logger.error('[tasks] POST /bulk-status error:', err);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Checklist sub-items (per-task subtasks shown in the To-Do sidebar)
+// ---------------------------------------------------------------------------
+
+// Helper: confirm the parent task belongs to the caller's tenant.
+async function loadTaskForTenant(id: string, tenantId: string) {
+  const [t] = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.id, id), eq(tasks.tenantId, tenantId)))
+    .limit(1);
+  return t ?? null;
+}
+
+router.get('/:id/checklist-items', async (req, res) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { id } = req.params;
+    const parent = await loadTaskForTenant(id, tenantId);
+    if (!parent) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+    const items = await db
+      .select()
+      .from(taskChecklistItems)
+      .where(eq(taskChecklistItems.taskId, id))
+      .orderBy(asc(taskChecklistItems.position), asc(taskChecklistItems.createdAt));
+    res.json({ items });
+  } catch (err) {
+    logger.error('[tasks] GET /:id/checklist-items error:', err);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+router.post('/:id/checklist-items', async (req, res) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { id } = req.params;
+    const { label } = req.body ?? {};
+    if (typeof label !== 'string' || !label.trim()) {
+      res.status(400).json({ error: 'label is required' });
+      return;
+    }
+    const parent = await loadTaskForTenant(id, tenantId);
+    if (!parent) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+    const [maxRow] = await db
+      .select({ max: sql<number>`COALESCE(MAX(${taskChecklistItems.position}), 0)` })
+      .from(taskChecklistItems)
+      .where(eq(taskChecklistItems.taskId, id));
+    const nextPos = (maxRow?.max ?? 0) + 1;
+
+    const [inserted] = await db
+      .insert(taskChecklistItems)
+      .values({ taskId: id, label: label.trim(), position: nextPos })
+      .returning();
+    res.status(201).json({ item: inserted });
+  } catch (err) {
+    logger.error('[tasks] POST /:id/checklist-items error:', err);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+router.patch('/:id/checklist-items/:itemId', async (req, res) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { id, itemId } = req.params;
+    const parent = await loadTaskForTenant(id, tenantId);
+    if (!parent) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+    const { label, isDone, position } = req.body ?? {};
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (label !== undefined) {
+      if (typeof label !== 'string' || !label.trim()) {
+        res.status(400).json({ error: 'label must be a non-empty string' });
+        return;
+      }
+      patch.label = label.trim();
+    }
+    if (isDone !== undefined) patch.isDone = !!isDone;
+    if (position !== undefined) {
+      const n = Number(position);
+      if (!Number.isFinite(n)) {
+        res.status(400).json({ error: 'position must be a number' });
+        return;
+      }
+      patch.position = n;
+    }
+    const [updated] = await db
+      .update(taskChecklistItems)
+      .set(patch)
+      .where(and(eq(taskChecklistItems.id, itemId), eq(taskChecklistItems.taskId, id)))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: 'item not found' });
+      return;
+    }
+    res.json({ item: updated });
+  } catch (err) {
+    logger.error('[tasks] PATCH /:id/checklist-items/:itemId error:', err);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+router.delete('/:id/checklist-items/:itemId', async (req, res) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { id, itemId } = req.params;
+    const parent = await loadTaskForTenant(id, tenantId);
+    if (!parent) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+    const [deleted] = await db
+      .delete(taskChecklistItems)
+      .where(and(eq(taskChecklistItems.id, itemId), eq(taskChecklistItems.taskId, id)))
+      .returning({ id: taskChecklistItems.id });
+    if (!deleted) {
+      res.status(404).json({ error: 'item not found' });
+      return;
+    }
+    res.json({ ok: true, id: deleted.id });
+  } catch (err) {
+    logger.error('[tasks] DELETE /:id/checklist-items/:itemId error:', err);
     res.status(500).json({ error: 'internal server error' });
   }
 });

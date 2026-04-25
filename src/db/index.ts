@@ -60,6 +60,8 @@ export {
   processedEvents,
   waTemplates,
   tasks,
+  taskLists,
+  taskChecklistItems,
   funnels,
   funnelMembers,
   funnelAssignments,
