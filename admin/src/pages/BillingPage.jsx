@@ -214,8 +214,8 @@ function ClientModal({ client, onClose, onSaved }) {
         <div className="p-5 space-y-4">
           {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</div>}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-slate-700 mb-1">Client / Company Name *</label>
               <input className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                 value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
@@ -236,7 +236,7 @@ function ClientModal({ client, onClose, onSaved }) {
             <label className="block text-xs font-medium text-slate-700 mb-1">Address</label>
             <input className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 mb-2"
               placeholder="Address line 1" value={form.addressLine1} onChange={e => setForm(f => ({ ...f, addressLine1: e.target.value }))} />
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <input className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                 placeholder="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
               <select className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
@@ -258,7 +258,7 @@ function ClientModal({ client, onClose, onSaved }) {
               </label>
             </div>
             {form.isGst && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">GSTIN</label>
                   <input className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 uppercase"
@@ -277,7 +277,7 @@ function ClientModal({ client, onClose, onSaved }) {
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Monthly Retainer (₹)</label>
               <input type="number" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
@@ -474,8 +474,8 @@ function InvoiceModal({ invoice, clients, onClose, onSaved }) {
         <div className="p-5 space-y-5">
           {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</div>}
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-3">
               <label className="block text-xs font-medium text-slate-700 mb-1">Client *</label>
               <select className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                 value={form.clientId} onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))}>
@@ -538,8 +538,8 @@ function InvoiceModal({ invoice, clients, onClose, onSaved }) {
               <button onClick={() => setLineItems(l => [...l, { description: '', sacCode: '9983', quantity: 1, unit: 'Month', rate: '', amount: 0 }])}
                 className="text-xs text-sky-600 hover:text-sky-700 font-medium">+ Add item</button>
             </div>
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="border border-slate-200 rounded-lg overflow-hidden overflow-x-auto">
+              <table className="w-full text-sm min-w-[640px]">
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 w-[35%]">Description</th>
@@ -600,7 +600,7 @@ function InvoiceModal({ invoice, clients, onClose, onSaved }) {
                 >Remove discount</button>
               )}
             </div>
-            <div className="grid grid-cols-[140px_1fr_1.5fr] gap-2 items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr_1.5fr] gap-2 items-stretch sm:items-center">
               <div className="flex rounded-lg border border-slate-300 overflow-hidden text-xs">
                 {[
                   { k: '', label: 'None' },
@@ -744,7 +744,7 @@ function PaymentModal({ invoice, onClose, onSaved }) {
             <input type="number" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Payment Date</label>
               <input type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
@@ -924,8 +924,8 @@ function CollectionTab() {
   });
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <table className="w-full">
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden overflow-x-auto">
+      <table className="w-full min-w-[1000px]">
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide min-w-[200px]">Client</th>
@@ -1154,33 +1154,33 @@ export default function BillingPage() {
   return (
     <div className="flex h-screen bg-slate-50">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto p-8">
+      <main className="flex-1 overflow-y-auto p-3 sm:p-8 min-w-0">
         {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Billing & Retainers</h1>
-            <p className="text-slate-500 mt-1 text-sm">Monthly recurring revenue and invoice management</p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Billing & Retainers</h1>
+            <p className="text-slate-500 mt-1 text-xs sm:text-sm">Monthly recurring revenue and invoice management</p>
           </div>
-          <div className="flex items-center gap-3">
-            {msg && <span className="text-sm text-slate-600">{msg}</span>}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {msg && <span className="text-xs sm:text-sm text-slate-600 w-full sm:w-auto">{msg}</span>}
             <button onClick={handleGenerate} disabled={generating}
-              className="px-4 py-2 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 disabled:opacity-50 flex items-center gap-2">
-              {generating ? '⏳' : '🔄'} Generate Drafts
+              className="px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap">
+              {generating ? '⏳' : '🔄'} <span className="hidden sm:inline">Generate Drafts</span><span className="sm:hidden">Drafts</span>
             </button>
             <button onClick={() => { setEditInvoice(null); setShowInvoiceModal(true); }}
-              className="px-4 py-2 text-sm bg-slate-800 text-white rounded-lg hover:bg-slate-700 flex items-center gap-1.5">
-              + New Invoice
+              className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-slate-800 text-white rounded-lg hover:bg-slate-700 flex items-center gap-1.5 whitespace-nowrap">
+              + <span className="hidden sm:inline">New&nbsp;</span>Invoice
             </button>
             <button onClick={() => { setEditClient(null); setShowClientModal(true); }}
-              className="px-4 py-2 text-sm bg-sky-600 text-white rounded-lg hover:bg-sky-700 flex items-center gap-1.5">
-              + Add Client
+              className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-sky-600 text-white rounded-lg hover:bg-sky-700 flex items-center gap-1.5 whitespace-nowrap">
+              + <span className="hidden sm:inline">Add&nbsp;</span>Client
             </button>
           </div>
         </div>
 
         {/* Stats */}
         {stats && (
-          <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
             {[
               { label: 'Monthly MRR', value: fmt(stats.totalMrr), color: 'text-sky-600', sub: 'active retainers' },
               { label: 'Collected this month', value: fmt(stats.collectedThisMonth), color: 'text-green-600', sub: 'payments received' },
@@ -1197,10 +1197,10 @@ export default function BillingPage() {
         )}
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-5 border-b border-slate-200">
+        <div className="flex gap-1 mb-5 border-b border-slate-200 overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
           {[['invoices', 'Invoices'], ['retainers', 'Retainers'], ['clients', 'Clients'], ['payments', 'Payments'], ['collection', 'Collection']].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                 tab === id ? 'border-sky-600 text-sky-600' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}>
               {label}
@@ -1215,26 +1215,28 @@ export default function BillingPage() {
             {/* ── INVOICES TAB ── */}
             {tab === 'invoices' && (
               <div>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="relative flex-1 max-w-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4">
+                  <div className="relative flex-1 sm:max-w-xs">
                     <input placeholder="Search client or invoice #" value={search} onChange={e => setSearch(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" />
                     <svg className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
-                  {['', 'draft', 'sent', 'paid', 'partially_paid', 'overdue', 'cancelled'].map(s => (
-                    <button key={s} onClick={() => setFilterStatus(s)}
-                      className={`px-3 py-1.5 text-xs rounded-full font-medium transition-colors ${
-                        filterStatus === s ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}>
-                      {s === '' ? 'All' : s.replace('_', ' ')}
-                    </button>
-                  ))}
+                  <div className="flex items-center gap-2 overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
+                    {['', 'draft', 'sent', 'paid', 'partially_paid', 'overdue', 'cancelled'].map(s => (
+                      <button key={s} onClick={() => setFilterStatus(s)}
+                        className={`px-3 py-1.5 text-xs rounded-full font-medium transition-colors whitespace-nowrap shrink-0 ${
+                          filterStatus === s ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}>
+                        {s === '' ? 'All' : s.replace('_', ' ')}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                  <table className="w-full">
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden overflow-x-auto">
+                  <table className="w-full min-w-[900px]">
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
                         {['Invoice #', 'Client', 'Date', 'Due', 'Amount', 'Tax', 'Status', 'Actions'].map(h => (
@@ -1356,8 +1358,8 @@ export default function BillingPage() {
 
             {/* ── CLIENTS TAB ── */}
             {tab === 'clients' && (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <table className="w-full">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden overflow-x-auto">
+                <table className="w-full min-w-[900px]">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
                       {['Client', 'Contact', 'Services', 'Retainer/mo', 'Tax Type', 'Invoice Day', 'Status', 'Actions'].map(h => (
@@ -1434,8 +1436,8 @@ export default function BillingPage() {
 
             {/* ── PAYMENTS TAB ── */}
             {tab === 'payments' && (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <table className="w-full">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden overflow-x-auto">
+                <table className="w-full min-w-[700px]">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
                       {['Date', 'Client', 'Invoice', 'Amount', 'Mode', 'Reference'].map(h => (

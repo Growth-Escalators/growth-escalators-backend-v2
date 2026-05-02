@@ -400,23 +400,23 @@ export default function TasksBoardPage() {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-800">Tasks Board</h1>
-            <p className="text-xs text-slate-500">
+        <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold text-slate-800 truncate">Tasks Board</h1>
+            <p className="text-xs text-slate-500 truncate">
               {loading ? 'Loading…' : `${totalCount} task${totalCount === 1 ? '' : 's'} · ${doneCount} done`}
             </p>
           </div>
           <button
             onClick={() => setModalTask({})}
-            className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg"
+            className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg shrink-0"
           >
-            <Plus className="w-4 h-4" /> New Task
+            <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New Task</span><span className="sm:hidden">New</span>
           </button>
         </header>
 
         {error && (
-          <div className="bg-red-50 border-b border-red-200 text-red-700 text-xs px-6 py-2">
+          <div className="bg-red-50 border-b border-red-200 text-red-700 text-xs px-3 sm:px-6 py-2">
             {error}
           </div>
         )}
@@ -426,7 +426,7 @@ export default function TasksBoardPage() {
           {/* Left: Kanban */}
           <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
             <DragDropContext onDragEnd={onDragEnd}>
-              <div className="flex gap-3 px-4 py-4 overflow-x-auto flex-1">
+              <div className="flex gap-3 px-3 sm:px-4 py-4 overflow-x-auto flex-1">
                 {COLUMNS.map((col) => {
                   const list = tasksByColumn[col.key] ?? [];
                   return (
@@ -486,13 +486,15 @@ export default function TasksBoardPage() {
             </DragDropContext>
           </div>
 
-          {/* Right: To-Do workspace (lists + checklist subitems) */}
-          <TodoSidebar
-            tasks={tasks}
-            onTaskCreated={(t) => upsertTask(t)}
-            onTaskUpdated={(t) => upsertTask(t)}
-            onTaskDeleted={(id) => removeTask(id)}
-          />
+          {/* Right: To-Do workspace (lists + checklist subitems) — desktop only */}
+          <div className="hidden lg:flex">
+            <TodoSidebar
+              tasks={tasks}
+              onTaskCreated={(t) => upsertTask(t)}
+              onTaskUpdated={(t) => upsertTask(t)}
+              onTaskDeleted={(id) => removeTask(id)}
+            />
+          </div>
         </div>
       </div>
 
