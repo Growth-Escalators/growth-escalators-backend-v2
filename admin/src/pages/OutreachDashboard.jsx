@@ -96,13 +96,13 @@ export default function OutreachDashboard() {
   return (
     <div className="flex h-screen bg-slate-50">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto p-6">
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Outreach Pipeline</h1>
-            <p className="text-slate-500 text-sm mt-0.5">White-label agency outreach — UK, AU, CA, US</p>
+      <main className="flex-1 overflow-y-auto p-3 sm:p-6 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 sm:gap-4 mb-4 sm:mb-5">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Outreach Pipeline</h1>
+            <p className="text-slate-500 text-xs sm:text-sm mt-0.5">White-label agency outreach — UK, AU, CA, US</p>
           </div>
-          {lastUpdated && <p className="text-xs text-slate-400">Updated {lastUpdated.toLocaleTimeString('en-IN')}</p>}
+          {lastUpdated && <p className="text-xs text-slate-400 shrink-0">Updated {lastUpdated.toLocaleTimeString('en-IN')}</p>}
         </div>
 
         {loading ? (
@@ -197,12 +197,12 @@ export default function OutreachDashboard() {
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {data.interestedLeads.map(l => (
-                      <div key={l.id} className="flex items-center justify-between p-2.5 bg-amber-50 rounded-lg border border-amber-100">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">{l.company}</p>
-                          <p className="text-xs text-slate-500">{l.email} · {l.country}</p>
+                      <div key={l.id} className="flex items-center justify-between gap-2 p-2.5 bg-amber-50 rounded-lg border border-amber-100">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{l.company}</p>
+                          <p className="text-xs text-slate-500 truncate">{l.email} · {l.country}</p>
                         </div>
-                        <span className="text-xs text-amber-600 font-medium">{l.notes?.slice(0, 40) || 'Interested'}</span>
+                        <span className="text-xs text-amber-600 font-medium shrink-0 max-w-[40%] truncate">{l.notes?.slice(0, 40) || 'Interested'}</span>
                       </div>
                     ))}
                   </div>
@@ -312,10 +312,10 @@ export default function OutreachDashboard() {
             </div>
 
             {/* Recent Activity */}
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-4">
               <h2 className="font-bold text-sm text-slate-800 mb-3">Recent Activity</h2>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm min-w-[700px]">
                   <thead>
                     <tr className="text-xs text-slate-500 border-b">
                       <th className="text-left py-2 px-2">Company</th>
