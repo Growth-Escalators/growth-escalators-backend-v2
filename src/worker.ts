@@ -19,7 +19,15 @@ import { analyzeWithClaude } from './services/intelligenceAnalyzer';
 import { deliverDailyIntelligence } from './services/intelligenceDelivery';
 import { SLACK_SALES_BD_CHANNEL, SLACK_JATIN, SLACK_SAKCHAM, SLACK_PERF_MARKETING_CHANNEL, SLACK_SEO_CHANNEL, SLACK_OUTREACH_CHANNEL, SLACK_SOD_EOD_CHANNEL, DEFAULT_TENANT_SLUG } from './config/constants';
 
-console.log('[worker] Worker process started');
+// True when this file is run directly (`node dist/worker.js`).
+// False when imported by `src/index.ts` so background jobs run inside `web`.
+// Health server + signal handlers are gated on this so they don't collide
+// with web's own port/handlers when running in-process.
+const RUNNING_STANDALONE = require.main === module;
+
+console.log(RUNNING_STANDALONE
+  ? '[worker] Worker process started (standalone)'
+  : '[scheduler] Background jobs starting inside web process');
 
 // Startup: validate critical environment variables
 const _missingEnvVars: string[] = [];
@@ -1197,15 +1205,19 @@ console.log('[cron] System health monitor scheduled — every 30 minutes');
 
 // ---------------------------------------------------------------------------
 // Worker health check HTTP server (for Railway health monitoring)
+// Only bound when running as a standalone process — when imported by web,
+// web's own /health route serves the same purpose and binds the public port.
 // ---------------------------------------------------------------------------
-const WORKER_PORT = parseInt(process.env.WORKER_PORT ?? '3001', 10);
-const healthServer = http.createServer((_req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok', uptime: Math.round(process.uptime()), ts: Date.now() }));
-});
-healthServer.listen(WORKER_PORT, () => {
-  console.log(`[worker] Health check server listening on port ${WORKER_PORT}`);
-});
+if (RUNNING_STANDALONE) {
+  const WORKER_PORT = parseInt(process.env.WORKER_PORT ?? '3001', 10);
+  const healthServer = http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', uptime: Math.round(process.uptime()), ts: Date.now() }));
+  });
+  healthServer.listen(WORKER_PORT, () => {
+    console.log(`[worker] Health check server listening on port ${WORKER_PORT}`);
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Meta token expiration monitoring — Every Monday 9:30 AM IST (4:00 UTC)
@@ -1303,21 +1315,28 @@ console.log('[cron] Monthly client benchmarks scheduled — 1st of month 11:00 A
 
 // ---------------------------------------------------------------------------
 // Graceful shutdown
+//
+// Split into two parts so the import path (web) can reuse the cron/interval
+// cleanup without also closing the shared DB pool — that's web's responsibility.
+// The standalone path bundles both into the original behavior.
 // ---------------------------------------------------------------------------
-const shutdown = async (signal: string) => {
-  console.log(`[worker-shutdown] ${signal} received — stopping workers…`);
 
-  // 1. Clear all interval timers
+/**
+ * Stop scheduled crons and intervals, drain in-flight jobs (max 30s).
+ * Does NOT close the DB pool — caller decides when to do that.
+ * Safe to call from `src/index.ts` shutdown when background jobs run in-process.
+ */
+export async function stopBackgroundJobs(): Promise<void> {
+  console.log(`[scheduler-shutdown] stopping background jobs…`);
+
   for (const id of _intervals) clearInterval(id);
-  console.log(`[worker-shutdown] cleared ${_intervals.length} interval timer(s)`);
+  console.log(`[scheduler-shutdown] cleared ${_intervals.length} interval timer(s)`);
 
-  // Stop the edge queue drainer loop
   stopEdgeQueueDrainer();
 
-  // 2. Wait for in-flight cron jobs to finish (max 30 seconds)
   const runningJobs = [..._cronRunning.entries()].filter(([, v]) => v).map(([k]) => k);
   if (runningJobs.length > 0) {
-    console.log(`[worker-shutdown] waiting for ${runningJobs.length} running job(s): ${runningJobs.join(', ')}`);
+    console.log(`[scheduler-shutdown] waiting for ${runningJobs.length} running job(s): ${runningJobs.join(', ')}`);
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
       const stillRunning = [..._cronRunning.entries()].filter(([, v]) => v);
@@ -1325,8 +1344,12 @@ const shutdown = async (signal: string) => {
       await new Promise(r => setTimeout(r, 1000));
     }
   }
+}
 
-  // 3. Close database pool
+const shutdown = async (signal: string) => {
+  console.log(`[worker-shutdown] ${signal} received — stopping workers…`);
+  await stopBackgroundJobs();
+
   try {
     await pool.end();
     console.log('[worker-shutdown] database pool closed');
@@ -1338,5 +1361,7 @@ const shutdown = async (signal: string) => {
   process.exit(0);
 };
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+if (RUNNING_STANDALONE) {
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
