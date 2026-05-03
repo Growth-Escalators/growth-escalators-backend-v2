@@ -566,9 +566,27 @@ async function startServer() {
 
   validateEnv();
 
-  httpServer.listen(PORT, () => {
+  httpServer.listen(PORT, async () => {
     console.log(`Growth Escalators backend running on port ${PORT}`);
-    // Workers and cron jobs now run in a separate process (src/worker.ts)
+
+    // -----------------------------------------------------------------------
+    // Background jobs (crons + workers + edge queue drainer)
+    // Default: run in-process (deprecates the separate GE-Worker Railway service).
+    // Set DISABLE_BACKGROUND_JOBS=true to skip — useful for multi-instance scaling
+    // or for emergency rollback to the standalone worker.
+    // -----------------------------------------------------------------------
+    let stopBackgroundJobs: (() => Promise<void>) | null = null;
+    if (process.env.DISABLE_BACKGROUND_JOBS !== 'true') {
+      try {
+        const mod = await import('./worker');
+        stopBackgroundJobs = mod.stopBackgroundJobs;
+        console.log('[boot] Background jobs running in-process');
+      } catch (e) {
+        console.error('[boot] Failed to start background jobs:', e);
+      }
+    } else {
+      console.log('[boot] DISABLE_BACKGROUND_JOBS=true — background jobs skipped');
+    }
 
     // -----------------------------------------------------------------------
     // Graceful shutdown
@@ -586,10 +604,19 @@ async function startServer() {
       io.close();
       console.log('[shutdown] Socket.io closed');
 
-      // 3. Wait up to 10s for in-flight requests
+      // 3. Stop background jobs if running in-process
+      if (stopBackgroundJobs) {
+        try {
+          await stopBackgroundJobs();
+        } catch (e) {
+          console.error('[shutdown] error stopping background jobs:', e);
+        }
+      }
+
+      // 4. Wait up to 10s for in-flight requests
       await new Promise(resolve => setTimeout(resolve, 10_000));
 
-      // 4. Close database pool
+      // 5. Close database pool
       try {
         await pool.end();
         console.log('[shutdown] database pool closed');
