@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { Fragment, useEffect, useState, useCallback } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import { apiFetch, getUser } from '../lib/api.js';
 import IntelligenceChatPanel from './IntelligenceChatPanel.jsx';
@@ -538,15 +538,24 @@ function SystemHealthTab() {
               </tr></thead>
               <tbody>
                 {health.cronJobs.map(c => (
-                  <tr key={c.name} className="border-b border-slate-50">
-                    <td className="py-1 px-2 font-medium text-slate-700">{c.name}</td>
-                    <td className="py-1 px-2">
-                      {c.healthy ? <span className="text-green-600">✓</span> : <span className="text-red-500">✗</span>}
-                    </td>
-                    <td className="py-1 px-2 text-slate-500">{c.lastRun ? new Date(c.lastRun).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) : 'Never'}</td>
-                    <td className="py-1 px-2 text-slate-500">{c.durationMs ? `${(c.durationMs / 1000).toFixed(1)}s` : '—'}</td>
-                    <td className="py-1 px-2 text-slate-500">{c.recordsProcessed || '—'}</td>
-                  </tr>
+                  <Fragment key={c.name}>
+                    <tr className="border-b border-slate-50">
+                      <td className="py-1 px-2 font-medium text-slate-700">{c.name}</td>
+                      <td className="py-1 px-2">
+                        {c.healthy ? <span className="text-green-600">✓</span> : <span className="text-red-500">✗</span>}
+                      </td>
+                      <td className="py-1 px-2 text-slate-500">{c.lastRun ? new Date(c.lastRun).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) : 'Never'}</td>
+                      <td className="py-1 px-2 text-slate-500">{c.durationMs ? `${(c.durationMs / 1000).toFixed(1)}s` : '—'}</td>
+                      <td className="py-1 px-2 text-slate-500">{c.recordsProcessed || '—'}</td>
+                    </tr>
+                    {!c.healthy && c.errorMessage && (
+                      <tr className="border-b border-slate-50 bg-red-50/40">
+                        <td colSpan={5} className="py-1 px-2 text-[11px] text-red-700 font-mono whitespace-pre-wrap break-all">
+                          ↳ {c.errorMessage}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

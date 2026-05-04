@@ -21,6 +21,7 @@ export interface CronJobStatus {
   durationMs: number | null;
   recordsProcessed: number;
   healthy: boolean;
+  errorMessage: string | null;
 }
 
 export interface SystemHealthReport {
@@ -309,7 +310,7 @@ async function checkCronJobs(): Promise<CronJobStatus[]> {
   try {
     const validNames = Object.keys(CRON_WINDOWS);
     const r = await pool.query(`
-      SELECT DISTINCT ON (job_name) job_name, status, started_at, completed_at, duration_ms, records_processed
+      SELECT DISTINCT ON (job_name) job_name, status, started_at, completed_at, duration_ms, records_processed, error_message
       FROM cron_job_logs
       WHERE job_name = ANY($1)
       ORDER BY job_name, started_at DESC
@@ -329,6 +330,7 @@ async function checkCronJobs(): Promise<CronJobStatus[]> {
         durationMs: row.duration_ms as number | null,
         recordsProcessed: (row.records_processed as number) ?? 0,
         healthy,
+        errorMessage: (row.error_message as string | null) ?? null,
       };
     });
   } catch { return []; }
