@@ -132,16 +132,55 @@ router.get('/', async (req, res) => {
       .orderBy(desc(tasks.updatedAt))
       .limit(Math.min(parseInt(limit, 10) || 500, 2000));
 
-    // Fetch tags (out-of-schema column) for the returned ids, merge in.
+    // Fetch tags (out-of-schema column) + subtask/comment/attachment counts
+    // for the returned ids, merge in. All in parallel — three small grouped
+    // queries, no N+1.
     const ids = rows.map(r => r.task.id);
     const tagsById = new Map<string, string[]>();
+    const subtasksById = new Map<string, { done: number; total: number }>();
+    const commentsById = new Map<string, number>();
+    const attachmentsById = new Map<string, number>();
     if (ids.length > 0) {
-      const tagRows = await pool.query(
-        `SELECT id, tags FROM tasks WHERE id = ANY($1::uuid[])`,
-        [ids],
-      );
+      const [tagRows, subRows, comRows, attRows] = await Promise.all([
+        pool.query(
+          `SELECT id, tags FROM tasks WHERE id = ANY($1::uuid[])`,
+          [ids],
+        ),
+        pool.query(
+          `SELECT task_id,
+                  COUNT(*) FILTER (WHERE is_done)::int AS done,
+                  COUNT(*)::int AS total
+           FROM task_checklist_items
+           WHERE task_id = ANY($1::uuid[])
+           GROUP BY task_id`,
+          [ids],
+        ),
+        pool.query(
+          `SELECT task_id, COUNT(*)::int AS n
+           FROM task_comments
+           WHERE task_id = ANY($1::uuid[])
+           GROUP BY task_id`,
+          [ids],
+        ),
+        pool.query(
+          `SELECT task_id, COUNT(*)::int AS n
+           FROM task_attachments
+           WHERE task_id = ANY($1::uuid[])
+           GROUP BY task_id`,
+          [ids],
+        ),
+      ]);
       for (const tr of tagRows.rows as Array<{ id: string; tags: string[] | null }>) {
         tagsById.set(tr.id, tr.tags ?? []);
+      }
+      for (const sr of subRows.rows as Array<{ task_id: string; done: number; total: number }>) {
+        subtasksById.set(sr.task_id, { done: sr.done, total: sr.total });
+      }
+      for (const cr of comRows.rows as Array<{ task_id: string; n: number }>) {
+        commentsById.set(cr.task_id, cr.n);
+      }
+      for (const ar of attRows.rows as Array<{ task_id: string; n: number }>) {
+        attachmentsById.set(ar.task_id, ar.n);
       }
     }
 
@@ -150,12 +189,17 @@ router.get('/', async (req, res) => {
         .filter(Boolean)
         .join(' ')
         .trim() || null;
+      const sub = subtasksById.get(r.task.id);
       return {
         ...r.task,
         status: normalizeStatus(r.task.status),
         tags: tagsById.get(r.task.id) ?? [],
         contactName,
         dealTitle: r.dealTitle ?? null,
+        subtasksDone: sub?.done ?? 0,
+        subtasksTotal: sub?.total ?? 0,
+        commentCount: commentsById.get(r.task.id) ?? 0,
+        attachmentCount: attachmentsById.get(r.task.id) ?? 0,
       };
     });
 

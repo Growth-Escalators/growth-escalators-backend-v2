@@ -4,6 +4,8 @@ import {
   Plus, X, Trash2, Calendar, User, ChevronDown, MessageSquare, Paperclip,
   Image as ImageIcon, FileText, File as FileIcon, Link as LinkIcon, Upload, Reply, Edit2,
   Tag, Filter, Search,
+  LayoutGrid, List as ListIcon, CalendarDays, CheckSquare, Square,
+  ChevronLeft, ChevronRight, ChevronUp,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar.jsx';
 import TodoSidebar from '../components/TodoSidebar.jsx';
@@ -25,6 +27,8 @@ const PRIORITY_STYLES = {
 const PRIORITY_LABEL = { low: 'Low', medium: 'Medium', high: 'High' };
 
 const VIEW_KEY = 'ge-crm-tasks-view';
+const SUBVIEW_KEY = 'ge-crm-tasks-subview';
+const SUBVIEWS = ['board', 'list', 'calendar'];
 
 function fmtDueAt(v) {
   if (!v) return '';
@@ -366,8 +370,16 @@ function TaskCard({ task, index, team, onOpen, onAssigned, selected, onToggleSel
                 {task.contactName}
               </span>
             )}
-            {(task.commentCount > 0 || task.attachmentCount > 0) && (
+            {(task.commentCount > 0 || task.attachmentCount > 0 || task.subtasksTotal > 0) && (
               <span className="inline-flex items-center gap-1.5 text-slate-400 ml-auto">
+                {task.subtasksTotal > 0 && (
+                  <span
+                    className={`inline-flex items-center gap-0.5 ${task.subtasksDone === task.subtasksTotal ? 'text-emerald-600' : ''}`}
+                    title={`${task.subtasksDone}/${task.subtasksTotal} subtasks complete`}
+                  >
+                    <CheckSquare className="w-3 h-3" /> {task.subtasksDone}/{task.subtasksTotal}
+                  </span>
+                )}
                 {task.commentCount > 0 && (
                   <span className="inline-flex items-center gap-0.5">
                     <MessageSquare className="w-3 h-3" /> {task.commentCount}
@@ -996,6 +1008,193 @@ function AttachmentsTab({ taskId, currentUser }) {
 }
 
 // ---------------------------------------------------------------------------
+// SubtasksSection — inline checklist inside the Details tab of the task modal.
+// Uses the same endpoints as TodoSidebar (/checklist-items) with optimistic
+// updates and revert-on-failure.
+// ---------------------------------------------------------------------------
+function SubtasksSection({ taskId, onCountsChanged }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch(`/api/tasks/${taskId}/checklist-items`);
+      setItems(data.items || []);
+    } catch (e) {
+      console.error('[Subtasks] load failed', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [taskId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const total = items.length;
+  const done = items.filter((i) => i.isDone).length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  useEffect(() => { onCountsChanged?.({ done, total }); }, [done, total, onCountsChanged]);
+
+  async function addItem(e) {
+    e?.preventDefault?.();
+    const label = draft.trim();
+    if (!label) return;
+    setDraft('');
+    // optimistic temp row
+    const tempId = `temp-${Date.now()}`;
+    setItems((xs) => [...xs, { id: tempId, label, isDone: false, _pending: true }]);
+    try {
+      const { item } = await apiFetch(`/api/tasks/${taskId}/checklist-items`, {
+        method: 'POST',
+        body: JSON.stringify({ label }),
+      });
+      setItems((xs) => xs.map((x) => x.id === tempId ? item : x));
+    } catch (err) {
+      setItems((xs) => xs.filter((x) => x.id !== tempId));
+      alert(`Couldn't add subtask: ${err.message}`);
+    }
+  }
+
+  async function toggle(item) {
+    const next = !item.isDone;
+    setItems((xs) => xs.map((x) => x.id === item.id ? { ...x, isDone: next } : x));
+    try {
+      await apiFetch(`/api/tasks/${taskId}/checklist-items/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isDone: next }),
+      });
+    } catch (err) {
+      setItems((xs) => xs.map((x) => x.id === item.id ? { ...x, isDone: item.isDone } : x));
+      alert(`Couldn't update: ${err.message}`);
+    }
+  }
+
+  async function remove(item) {
+    const snapshot = items;
+    setItems((xs) => xs.filter((x) => x.id !== item.id));
+    try {
+      await apiFetch(`/api/tasks/${taskId}/checklist-items/${item.id}`, { method: 'DELETE' });
+    } catch (err) {
+      setItems(snapshot);
+      alert(`Couldn't delete: ${err.message}`);
+    }
+  }
+
+  async function rename(item, label) {
+    const next = label.trim();
+    if (!next || next === item.label) return;
+    setItems((xs) => xs.map((x) => x.id === item.id ? { ...x, label: next } : x));
+    try {
+      await apiFetch(`/api/tasks/${taskId}/checklist-items/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ label: next }),
+      });
+    } catch (err) {
+      setItems((xs) => xs.map((x) => x.id === item.id ? { ...x, label: item.label } : x));
+      alert(`Couldn't rename: ${err.message}`);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
+          <CheckSquare className="w-3 h-3" /> Subtasks
+          {total > 0 && (
+            <span className="text-[11px] text-slate-400 font-normal">
+              {done}/{total} · {pct}%
+            </span>
+          )}
+        </label>
+      </div>
+      {total > 0 && (
+        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
+          <div
+            className={`h-full transition-all ${done === total ? 'bg-emerald-500' : 'bg-sky-500'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+      {loading ? (
+        <p className="text-xs text-slate-400">Loading…</p>
+      ) : (
+        <ul className="space-y-1 mb-2">
+          {items.map((item) => (
+            <SubtaskRow key={item.id} item={item} onToggle={toggle} onDelete={remove} onRename={rename} />
+          ))}
+        </ul>
+      )}
+      <form onSubmit={addItem} className="flex items-center gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={total === 0 ? 'Add a subtask… Enter to save' : 'Add another…'}
+          className="flex-1 text-sm border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-200"
+        />
+        <button
+          type="submit"
+          disabled={!draft.trim()}
+          className="text-xs bg-sky-600 hover:bg-sky-700 disabled:opacity-40 text-white font-medium px-2.5 py-1.5 rounded"
+        >
+          Add
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function SubtaskRow({ item, onToggle, onDelete, onRename }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.label);
+
+  useEffect(() => { setDraft(item.label); }, [item.label]);
+
+  return (
+    <li className="group flex items-center gap-2 text-sm">
+      <button
+        type="button"
+        onClick={() => onToggle(item)}
+        className="shrink-0 text-slate-400 hover:text-sky-600"
+        aria-label={item.isDone ? 'Mark not done' : 'Mark done'}
+      >
+        {item.isDone ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
+      </button>
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { setEditing(false); onRename(item, draft); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+            if (e.key === 'Escape') { e.preventDefault(); setDraft(item.label); setEditing(false); }
+          }}
+          className="flex-1 min-w-0 text-sm border-b border-sky-300 focus:outline-none bg-transparent"
+        />
+      ) : (
+        <span
+          onClick={() => setEditing(true)}
+          className={`flex-1 min-w-0 truncate cursor-text ${item.isDone ? 'line-through text-slate-400' : 'text-slate-700'}`}
+          title="Click to rename"
+        >
+          {item.label}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={() => onDelete(item)}
+        className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-600 shrink-0"
+        aria-label="Delete subtask"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Add / Edit modal
 // ---------------------------------------------------------------------------
 function TaskModal({ task, team, currentUser, onClose, onSaved, onDeleted, allTags = [] }) {
@@ -1219,6 +1418,9 @@ function TaskModal({ task, team, currentUser, onClose, onSaved, onDeleted, allTa
                     )}
                   </div>
                 </div>
+                {isEdit && (
+                  <SubtasksSection taskId={task.id} />
+                )}
                 {error && <p className="text-xs text-red-600">{error}</p>}
                 {!isEdit && assignedTo && (
                   <p className="text-[11px] text-slate-400">Assignee will be notified on Slack.</p>
@@ -1598,6 +1800,566 @@ function TeamPerformanceTab() {
 }
 
 // ---------------------------------------------------------------------------
+// SkeletonBoard / SkeletonList / SkeletonCalendar
+// Lightweight loading placeholders — animated grey blocks while data loads.
+// ---------------------------------------------------------------------------
+function SkeletonBoard() {
+  return (
+    <div className="flex gap-3 px-4 py-4 overflow-x-auto flex-1">
+      {COLUMNS.map((col) => (
+        <div key={col.key} className={`flex flex-col rounded-xl border ${col.light} w-[260px] shrink-0`}>
+          <div className="rounded-t-xl px-3 py-2.5" style={{ background: col.color }}>
+            <span className="block h-3 w-20 bg-white/30 rounded animate-pulse" />
+          </div>
+          <div className="flex-1 p-2 space-y-2 min-h-[120px]">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="bg-white border border-slate-200 rounded-lg p-2.5 animate-pulse">
+                <div className="h-3 bg-slate-200 rounded w-3/4 mb-2" />
+                <div className="h-2 bg-slate-100 rounded w-1/2 mb-1.5" />
+                <div className="flex gap-1.5 mt-2">
+                  <div className="h-4 w-4 bg-slate-200 rounded-full" />
+                  <div className="h-4 w-12 bg-slate-100 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SkeletonList() {
+  return (
+    <div className="p-4">
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="px-4 py-3 border-b border-slate-100 last:border-b-0 flex items-center gap-3 animate-pulse">
+            <div className="w-4 h-4 bg-slate-200 rounded" />
+            <div className="h-3 bg-slate-200 rounded flex-1" />
+            <div className="h-3 bg-slate-100 rounded w-20" />
+            <div className="h-3 bg-slate-100 rounded w-16" />
+            <div className="h-3 bg-slate-100 rounded w-24" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ListView — flat sortable, groupable table view of tasks.
+// Reuses existing PATCH endpoints for inline edits.
+// ---------------------------------------------------------------------------
+const LIST_COLUMNS = [
+  { key: 'title',     label: 'Title',    sortable: true,  align: 'left' },
+  { key: 'assignee',  label: 'Assignee', sortable: true,  align: 'left' },
+  { key: 'priority',  label: 'Priority', sortable: true,  align: 'left' },
+  { key: 'dueAt',     label: 'Due',      sortable: true,  align: 'left' },
+  { key: 'tags',      label: 'Tags',     sortable: false, align: 'left' },
+  { key: 'status',    label: 'Status',   sortable: true,  align: 'left' },
+];
+
+function ListView({
+  tasks, team, selectedIds, onToggleSelect, onOpen,
+  onPatchTask, onDelete,
+}) {
+  const [sortKey, setSortKey] = useState('priority');
+  const [sortDir, setSortDir] = useState('asc'); // asc | desc
+  const [groupBy, setGroupBy] = useState('status'); // none | status | assignee | priority
+
+  function toggleSort(key) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }
+
+  function compare(a, b) {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    if (sortKey === 'title') {
+      return (a.title || '').localeCompare(b.title || '') * dir;
+    }
+    if (sortKey === 'priority') {
+      const pa = PRIORITY_RANK[a.priority || 'medium'] ?? 1;
+      const pb = PRIORITY_RANK[b.priority || 'medium'] ?? 1;
+      return (pa - pb) * dir;
+    }
+    if (sortKey === 'dueAt') {
+      const da = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+      const db = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+      return (da - db) * dir;
+    }
+    if (sortKey === 'assignee') {
+      const na = displayAssignee(a.assignedTo, team) || '~';
+      const nb = displayAssignee(b.assignedTo, team) || '~';
+      return na.localeCompare(nb) * dir;
+    }
+    if (sortKey === 'status') {
+      const sa = COLUMNS.findIndex((c) => c.key === a.status);
+      const sb = COLUMNS.findIndex((c) => c.key === b.status);
+      return (sa - sb) * dir;
+    }
+    return 0;
+  }
+
+  const sorted = useMemo(() => [...tasks].sort(compare), [tasks, sortKey, sortDir, team]);
+
+  const groups = useMemo(() => {
+    if (groupBy === 'none') return [{ key: '__all', label: null, items: sorted }];
+    const map = new Map();
+    function keyOf(t) {
+      if (groupBy === 'status') return t.status || 'not_started';
+      if (groupBy === 'priority') return t.priority || 'medium';
+      if (groupBy === 'assignee') return t.assignedTo || '__unassigned';
+      return '__all';
+    }
+    function labelOf(k) {
+      if (groupBy === 'status') return COLUMNS.find((c) => c.key === k)?.label || k;
+      if (groupBy === 'priority') return PRIORITY_LABEL[k] || k;
+      if (groupBy === 'assignee') {
+        if (k === '__unassigned') return 'Unassigned';
+        return displayAssignee(k, team) || k;
+      }
+      return k;
+    }
+    for (const t of sorted) {
+      const k = keyOf(t);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(t);
+    }
+    return Array.from(map.entries()).map(([k, items]) => ({
+      key: k,
+      label: labelOf(k),
+      items,
+    }));
+  }, [sorted, groupBy, team]);
+
+  const [collapsed, setCollapsed] = useState({});
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs text-slate-500">Group by:</span>
+        {[
+          { k: 'none',     label: 'None' },
+          { k: 'status',   label: 'Status' },
+          { k: 'assignee', label: 'Assignee' },
+          { k: 'priority', label: 'Priority' },
+        ].map((g) => (
+          <button
+            key={g.k}
+            onClick={() => setGroupBy(g.k)}
+            className={`text-xs px-2 py-1 rounded font-medium ${
+              groupBy === g.k
+                ? 'bg-sky-600 text-white'
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+            <tr>
+              <th className="w-8 px-3 py-2"></th>
+              {LIST_COLUMNS.map((c) => (
+                <th
+                  key={c.key}
+                  className={`px-3 py-2 font-medium text-${c.align} ${c.sortable ? 'cursor-pointer hover:text-slate-700' : ''}`}
+                  onClick={c.sortable ? () => toggleSort(c.key) : undefined}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {c.label}
+                    {sortKey === c.key && (
+                      sortDir === 'asc'
+                        ? <ChevronUp className="w-3 h-3" />
+                        : <ChevronDown className="w-3 h-3" />
+                    )}
+                  </span>
+                </th>
+              ))}
+              <th className="w-8 px-2 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((g) => (
+              <React.Fragment key={g.key}>
+                {g.label && (
+                  <tr className="bg-slate-50/60 border-t border-slate-200">
+                    <td colSpan={LIST_COLUMNS.length + 2} className="px-3 py-1.5">
+                      <button
+                        onClick={() => setCollapsed((c) => ({ ...c, [g.key]: !c[g.key] }))}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-sky-700"
+                      >
+                        {collapsed[g.key] ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        {g.label}
+                        <span className="text-slate-400 font-normal">({g.items.length})</span>
+                      </button>
+                    </td>
+                  </tr>
+                )}
+                {!collapsed[g.key] && g.items.map((t) => (
+                  <ListRow
+                    key={t.id}
+                    task={t}
+                    team={team}
+                    selected={selectedIds.includes(t.id)}
+                    onToggleSelect={onToggleSelect}
+                    onOpen={onOpen}
+                    onPatchTask={onPatchTask}
+                    onDelete={onDelete}
+                  />
+                ))}
+              </React.Fragment>
+            ))}
+            {tasks.length === 0 && (
+              <tr>
+                <td colSpan={LIST_COLUMNS.length + 2} className="px-3 py-8 text-center text-xs text-slate-400">
+                  No tasks match your filters.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ListRow({ task, team, selected, onToggleSelect, onOpen, onPatchTask, onDelete }) {
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(task.title || '');
+  useEffect(() => setTitleDraft(task.title || ''), [task.title]);
+
+  const pill = dueAtPill(task);
+  const assigneeName = displayAssignee(task.assignedTo, team);
+  const statusMeta = COLUMNS.find((c) => c.key === task.status) || COLUMNS[0];
+
+  function saveTitle() {
+    const next = titleDraft.trim();
+    setEditingTitle(false);
+    if (!next || next === task.title) return;
+    onPatchTask(task.id, { title: next });
+  }
+
+  return (
+    <tr className="border-t border-slate-100 hover:bg-sky-50/30">
+      <td className="px-3 py-2 align-middle">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(task.id)}
+          className="cursor-pointer accent-sky-600"
+        />
+      </td>
+      <td className="px-3 py-2 align-middle">
+        {editingTitle ? (
+          <input
+            autoFocus
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={saveTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); saveTitle(); }
+              if (e.key === 'Escape') { e.preventDefault(); setTitleDraft(task.title || ''); setEditingTitle(false); }
+            }}
+            className="w-full text-sm border-b border-sky-300 focus:outline-none bg-transparent"
+          />
+        ) : (
+          <button
+            onClick={() => setEditingTitle(true)}
+            onDoubleClick={() => onOpen(task)}
+            className="text-left text-sm text-slate-800 hover:text-sky-700"
+            title="Click to rename · Double-click to open"
+          >
+            {task.title}
+          </button>
+        )}
+      </td>
+      <td className="px-3 py-2 align-middle">
+        <select
+          value={task.assignedTo || ''}
+          onChange={(e) => onPatchTask(task.id, { assignedTo: e.target.value || null })}
+          className="text-xs border border-transparent hover:border-slate-200 focus:border-slate-300 rounded px-1.5 py-0.5 bg-transparent focus:outline-none"
+        >
+          <option value="">Unassigned</option>
+          {team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        {assigneeName && !team.some((m) => m.id === task.assignedTo) && (
+          <span className="text-xs text-slate-500 ml-1">{assigneeName}</span>
+        )}
+      </td>
+      <td className="px-3 py-2 align-middle">
+        <select
+          value={task.priority || 'medium'}
+          onChange={(e) => onPatchTask(task.id, { priority: e.target.value })}
+          className={`text-[11px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 border-0 focus:outline-none focus:ring-1 focus:ring-sky-300 ${PRIORITY_STYLES[task.priority || 'medium']}`}
+        >
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+      </td>
+      <td className="px-3 py-2 align-middle">
+        <input
+          type="date"
+          value={toDateInput(task.dueAt)}
+          onChange={(e) => onPatchTask(task.id, { dueAt: e.target.value ? new Date(e.target.value).toISOString() : null })}
+          className={`text-xs rounded px-1.5 py-0.5 border-0 focus:outline-none focus:ring-1 focus:ring-sky-300 ${pill ? pill.style : 'bg-transparent text-slate-400'}`}
+        />
+      </td>
+      <td className="px-3 py-2 align-middle">
+        <div className="flex flex-wrap gap-1">
+          {(task.tags || []).slice(0, 3).map((t) => <TagChip key={t} tag={t} />)}
+          {(task.tags || []).length > 3 && (
+            <span className="text-[10px] text-slate-400">+{task.tags.length - 3}</span>
+          )}
+        </div>
+      </td>
+      <td className="px-3 py-2 align-middle">
+        <select
+          value={task.status}
+          onChange={(e) => onPatchTask(task.id, { status: e.target.value })}
+          className="text-xs border-0 rounded px-1.5 py-0.5 font-medium focus:outline-none focus:ring-1 focus:ring-sky-300"
+          style={{ background: `${statusMeta.color}15`, color: statusMeta.color }}
+        >
+          {COLUMNS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+      </td>
+      <td className="px-2 py-2 align-middle text-right">
+        <button
+          onClick={() => onOpen(task)}
+          className="text-[11px] text-slate-400 hover:text-sky-700"
+          title="Open"
+        >
+          Open
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CalendarView — month grid, drag tasks across days to reschedule.
+// ---------------------------------------------------------------------------
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function startOfMonth(d) { const x = new Date(d); x.setDate(1); x.setHours(0, 0, 0, 0); return x; }
+function isSameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+function dayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function CalendarView({ tasks, team, onOpen, onCreateOnDay, onPatchTask }) {
+  const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
+  const [dayModalDate, setDayModalDate] = useState(null);
+
+  const monthLabel = cursor.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  // Build a 6-row × 7-col grid starting from Monday before/of the 1st.
+  const grid = useMemo(() => {
+    const first = startOfMonth(cursor);
+    const jsDay = first.getDay(); // 0=Sun
+    const mondayOffset = (jsDay + 6) % 7; // days to subtract to land on Monday
+    const start = new Date(first);
+    start.setDate(start.getDate() - mondayOffset);
+    const cells = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      cells.push(d);
+    }
+    return cells;
+  }, [cursor]);
+
+  // Bucket tasks by day-of-due
+  const byDay = useMemo(() => {
+    const map = new Map();
+    for (const t of tasks) {
+      if (!t.dueAt) continue;
+      const d = new Date(t.dueAt);
+      if (isNaN(d.getTime())) continue;
+      const k = dayKey(d);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(t);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const pa = PRIORITY_RANK[a.priority || 'medium'] ?? 1;
+        const pb = PRIORITY_RANK[b.priority || 'medium'] ?? 1;
+        return pa - pb;
+      });
+    }
+    return map;
+  }, [tasks]);
+
+  function onDragEnd(result) {
+    const { source, destination, draggableId } = result;
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId) return;
+    const targetDate = destination.droppableId; // YYYY-MM-DD
+    const iso = new Date(`${targetDate}T12:00:00`).toISOString();
+    onPatchTask(draggableId, { dueAt: iso });
+  }
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { const n = new Date(cursor); n.setMonth(n.getMonth() - 1); setCursor(n); }}
+            className="p-1.5 rounded hover:bg-slate-100"
+            aria-label="Previous month"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <h3 className="text-sm font-semibold text-slate-800 min-w-[160px] text-center">{monthLabel}</h3>
+          <button
+            onClick={() => { const n = new Date(cursor); n.setMonth(n.getMonth() + 1); setCursor(n); }}
+            className="p-1.5 rounded hover:bg-slate-100"
+            aria-label="Next month"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setCursor(startOfMonth(new Date()))}
+            className="ml-2 text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50"
+          >
+            Today
+          </button>
+        </div>
+        <p className="text-xs text-slate-400">
+          Drag a task to a new day to reschedule
+        </p>
+      </div>
+
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div className="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-xl overflow-hidden text-xs">
+          {DAY_NAMES.map((n) => (
+            <div key={n} className="bg-slate-50 px-2 py-1.5 text-[11px] font-medium text-slate-500 uppercase tracking-wide">
+              {n}
+            </div>
+          ))}
+          {grid.map((d, i) => {
+            const inMonth = d.getMonth() === cursor.getMonth();
+            const isToday = isSameDay(d, today);
+            const k = dayKey(d);
+            const items = byDay.get(k) || [];
+            const visible = items.slice(0, 4);
+            const overflow = items.length - visible.length;
+            return (
+              <Droppable droppableId={k} key={i}>
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className={`bg-white min-h-[110px] p-1.5 flex flex-col gap-1 ${snapshot.isDraggingOver ? 'bg-sky-50' : ''} ${!inMonth ? 'opacity-50' : ''}`}
+                  >
+                    <button
+                      onClick={() => onCreateOnDay(d)}
+                      className={`text-[11px] font-medium text-left w-fit px-1 rounded hover:bg-sky-50 ${isToday ? 'bg-sky-600 text-white hover:bg-sky-700' : 'text-slate-600'}`}
+                      title="Click to create a task on this day"
+                    >
+                      {d.getDate()}
+                    </button>
+                    {visible.map((t, idx) => (
+                      <Draggable draggableId={t.id} index={idx} key={t.id}>
+                        {(prov) => (
+                          <button
+                            ref={prov.innerRef}
+                            {...prov.draggableProps}
+                            {...prov.dragHandleProps}
+                            onClick={() => onOpen(t)}
+                            className="text-left text-[11px] px-1.5 py-0.5 rounded bg-slate-50 hover:bg-sky-50 border border-slate-100 truncate flex items-center gap-1"
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{
+                                background:
+                                  t.priority === 'high' ? '#dc2626'
+                                  : t.priority === 'low' ? '#94a3b8'
+                                  : '#0284c7',
+                              }}
+                            />
+                            <span className="truncate flex-1">{t.title}</span>
+                            {t.assignedTo && (
+                              <span className="shrink-0 text-[9px] text-slate-500">
+                                {initials(displayAssignee(t.assignedTo, team))}
+                              </span>
+                            )}
+                          </button>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
+                    {overflow > 0 && (
+                      <button
+                        onClick={() => setDayModalDate(d)}
+                        className="text-[10px] text-sky-600 hover:underline self-start"
+                      >
+                        +{overflow} more
+                      </button>
+                    )}
+                  </div>
+                )}
+              </Droppable>
+            );
+          })}
+        </div>
+      </DragDropContext>
+
+      {dayModalDate && (
+        <DayModal
+          date={dayModalDate}
+          tasks={byDay.get(dayKey(dayModalDate)) || []}
+          team={team}
+          onClose={() => setDayModalDate(null)}
+          onOpen={(t) => { setDayModalDate(null); onOpen(t); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DayModal({ date, tasks, team, onClose, onOpen }) {
+  const label = date.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return (
+    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+          <h3 className="text-sm font-semibold text-slate-800">{label}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="w-4 h-4" /></button>
+        </div>
+        <ul className="overflow-y-auto divide-y divide-slate-100">
+          {tasks.map((t) => (
+            <li key={t.id}>
+              <button
+                onClick={() => onOpen(t)}
+                className="w-full text-left px-5 py-2.5 hover:bg-sky-50 flex items-center gap-2"
+              >
+                <PriorityChip priority={t.priority} />
+                <span className="text-sm text-slate-800 flex-1 truncate">{t.title}</span>
+                <Avatar name={displayAssignee(t.assignedTo, team)} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 export default function TasksBoardPage() {
@@ -1621,6 +2383,15 @@ export default function TasksBoardPage() {
     } catch {}
     return 'mine';
   });
+  const [subView, setSubView] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SUBVIEW_KEY);
+      if (SUBVIEWS.includes(saved)) return saved;
+    } catch {}
+    return 'board';
+  });
+  const filterInputRef = useRef(null);
+  const quickAddInputRef = useRef({});
 
   const currentUser = getUser();
   const isAdmin = currentUser?.role === 'admin';
@@ -1630,9 +2401,75 @@ export default function TasksBoardPage() {
     setFilterAssignee(''); setFilterTag(''); setFilterPriority(''); setFilterDue('');
   }
 
+  // Global keyboard shortcuts: N (new), E (edit selected), Del (delete selected), / (filter), Esc (clear).
+  useEffect(() => {
+    function isTypingTarget(el) {
+      if (!el) return false;
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (el.isContentEditable) return true;
+      return false;
+    }
+    function onKey(e) {
+      if (modalTask !== null) {
+        if (e.key === 'Escape') { setModalTask(null); }
+        return;
+      }
+      if (isTypingTarget(e.target)) {
+        if (e.key === 'Escape') e.target.blur();
+        return;
+      }
+      if (e.key === '/') {
+        e.preventDefault();
+        filterInputRef.current?.focus();
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        if (subView === 'board') {
+          const firstCol = COLUMNS[0].key;
+          setQuickAddOpen((s) => ({ ...s, [firstCol]: true }));
+          requestAnimationFrame(() => quickAddInputRef.current[firstCol]?.focus());
+        } else {
+          setModalTask({});
+        }
+        return;
+      }
+      if ((e.key === 'e' || e.key === 'E') && selectedIds.length === 1) {
+        e.preventDefault();
+        const t = tasks.find((x) => x.id === selectedIds[0]);
+        if (t) setModalTask(t);
+        return;
+      }
+      if (e.key === 'Delete' && selectedIds.length > 0) {
+        e.preventDefault();
+        if (!confirm(`Delete ${selectedIds.length} task${selectedIds.length === 1 ? '' : 's'}?`)) return;
+        apiFetch('/api/tasks/bulk-delete', {
+          method: 'POST',
+          body: JSON.stringify({ ids: selectedIds }),
+        })
+          .then(() => {
+            setTasks((ts) => ts.filter((t) => !selectedIds.includes(t.id)));
+            setSelectedIds([]);
+          })
+          .catch((err) => alert(`Delete failed: ${err.message}`));
+        return;
+      }
+      if (e.key === 'Escape') {
+        setSelectedIds([]);
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [modalTask, selectedIds, tasks, subView]);
+
   useEffect(() => {
     try { localStorage.setItem(VIEW_KEY, view); } catch {}
   }, [view]);
+
+  useEffect(() => {
+    try { localStorage.setItem(SUBVIEW_KEY, subView); } catch {}
+  }, [subView]);
 
   // If a non-admin somehow has the perf view persisted, fall back.
   useEffect(() => {
@@ -1671,6 +2508,43 @@ export default function TasksBoardPage() {
       setError(e.message || 'Rename failed');
       // Best-effort reload to undo optimism on failure
       load();
+    }
+  }
+
+  // Generic optimistic PATCH used by List/Calendar inline edits.
+  const patchTask = useCallback(async (taskId, patch) => {
+    let snapshot = null;
+    setTasks((ts) => {
+      snapshot = ts;
+      return ts.map((t) => (t.id === taskId ? { ...t, ...patch } : t));
+    });
+    try {
+      const { task: updated } = await apiFetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+      if (updated) {
+        setTasks((ts) => ts.map((t) => (t.id === taskId ? { ...t, ...updated } : t)));
+      }
+    } catch (e) {
+      if (snapshot) setTasks(snapshot);
+      setError(e.message || 'Update failed');
+    }
+  }, []);
+
+  async function clearDoneColumn() {
+    const doneIds = tasks.filter((t) => t.status === 'done').map((t) => t.id);
+    if (doneIds.length === 0) return;
+    if (!confirm(`Permanently delete ${doneIds.length} done task${doneIds.length === 1 ? '' : 's'}?`)) return;
+    try {
+      await apiFetch('/api/tasks/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids: doneIds }),
+      });
+      setTasks((ts) => ts.filter((t) => !doneIds.includes(t.id)));
+      setSelectedIds((ids) => ids.filter((x) => !doneIds.includes(x)));
+    } catch (e) {
+      alert(`Clear done failed: ${e.message}`);
     }
   }
 
@@ -1848,12 +2722,34 @@ export default function TasksBoardPage() {
             </div>
           </div>
           {view !== 'perf' && (
-            <button
-              onClick={() => setModalTask({})}
-              className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg"
-            >
-              <Plus className="w-4 h-4" /> New Task
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                {[
+                  { k: 'board',    label: 'Board',    Icon: LayoutGrid },
+                  { k: 'list',     label: 'List',     Icon: ListIcon },
+                  { k: 'calendar', label: 'Calendar', Icon: CalendarDays },
+                ].map((s) => (
+                  <button
+                    key={s.k}
+                    onClick={() => setSubView(s.k)}
+                    title={s.label}
+                    className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md ${
+                      subView === s.k
+                        ? 'bg-white text-slate-800 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-800'
+                    }`}
+                  >
+                    <s.Icon className="w-3.5 h-3.5" /> {s.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setModalTask({})}
+                className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg"
+              >
+                <Plus className="w-4 h-4" /> New Task
+              </button>
+            </div>
           )}
         </header>
 
@@ -1868,6 +2764,7 @@ export default function TasksBoardPage() {
           <div className="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-2 flex-wrap shrink-0">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
             <select
+              ref={filterInputRef}
               value={filterAssignee}
               onChange={(e) => setFilterAssignee(e.target.value)}
               className="text-xs border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-sky-200"
@@ -1926,6 +2823,34 @@ export default function TasksBoardPage() {
           <div className="flex-1 min-h-0">
             <TeamPerformanceTab />
           </div>
+        ) : loading && tasks.length === 0 ? (
+          <div className="flex-1 flex min-h-0">
+            <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
+              {subView === 'list' ? <SkeletonList /> : <SkeletonBoard />}
+            </div>
+          </div>
+        ) : subView === 'list' ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            <ListView
+              tasks={visibleTasks}
+              team={team}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onOpen={(t) => setModalTask(t)}
+              onPatchTask={patchTask}
+              onDelete={removeTask}
+            />
+          </div>
+        ) : subView === 'calendar' ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            <CalendarView
+              tasks={visibleTasks}
+              team={team}
+              onOpen={(t) => setModalTask(t)}
+              onCreateOnDay={(d) => setModalTask({ dueAt: new Date(`${dayKey(d)}T12:00:00`).toISOString() })}
+              onPatchTask={patchTask}
+            />
+          </div>
         ) : (
           <div className="flex-1 flex min-h-0">
             <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
@@ -1939,15 +2864,26 @@ export default function TasksBoardPage() {
                         className={`flex flex-col rounded-xl border ${col.light} w-[260px] shrink-0`}
                       >
                         <div
-                          className="rounded-t-xl px-3 py-2.5 flex items-center justify-between"
+                          className="rounded-t-xl px-3 py-2.5 flex items-center justify-between gap-2"
                           style={{ background: col.color }}
                         >
                           <h2 className="text-white font-semibold text-xs uppercase tracking-wide">
                             {col.label}
                           </h2>
-                          <span className="bg-white/25 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                            {list.length}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {col.key === 'done' && list.length > 0 && (
+                              <button
+                                onClick={clearDoneColumn}
+                                title="Clear done column"
+                                className="text-[10px] text-white/80 hover:text-white hover:bg-white/10 px-1.5 py-0.5 rounded"
+                              >
+                                Clear
+                              </button>
+                            )}
+                            <span className="bg-white/25 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                              {list.length}
+                            </span>
+                          </div>
                         </div>
                         <Droppable droppableId={col.key}>
                           {(provided, snapshot) => (
@@ -1988,6 +2924,7 @@ export default function TasksBoardPage() {
                             >
                               <input
                                 autoFocus
+                                ref={(el) => { quickAddInputRef.current[col.key] = el; }}
                                 value={quickAddText}
                                 onChange={(e) => setQuickAddText(e.target.value)}
                                 onBlur={() => {
