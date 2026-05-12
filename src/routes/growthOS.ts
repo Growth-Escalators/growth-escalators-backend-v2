@@ -6,6 +6,7 @@ import { calculateBrandHealth, sendHealthScoreWhatsApp } from '../services/brand
 import { calculateMoneyOnTable } from '../services/opportunityService';
 import { trackCreativePerformance } from '../services/creativeIntelligenceService';
 import { runCompetitorPulse } from '../services/competitorService';
+import { isAdminTier } from '../middleware/rbac';
 
 const router = Router();
 
@@ -27,7 +28,7 @@ router.get('/clients', async (_req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.post('/clients', async (req: Request, res: Response) => {
   const user = (req as Request & { user?: { role: string } }).user;
-  if (user?.role !== 'admin') { res.status(403).json({ error: 'Admin only' }); return; }
+  if (!isAdminTier(user?.role)) { res.status(403).json({ error: 'Admin only' }); return; }
 
   const { client_name, ad_account_id, founder_whatsapp, founder_name, monthly_ad_spend, target_roas, industry, competitors } = req.body as Record<string, unknown>;
   if (!client_name || !ad_account_id) { res.status(400).json({ error: 'client_name and ad_account_id required' }); return; }
@@ -89,7 +90,7 @@ router.get('/health/:clientName', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.post('/health/generate', async (req: Request, res: Response) => {
   const user = (req as Request & { user?: { role: string } }).user;
-  if (user?.role !== 'admin') { res.status(403).json({ error: 'Admin only' }); return; }
+  if (!isAdminTier(user?.role)) { res.status(403).json({ error: 'Admin only' }); return; }
 
   res.json({ status: 'generating', message: 'Health score generation started. Check /health/all shortly.' });
 
@@ -130,7 +131,7 @@ router.get('/opportunity/:clientName', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.post('/opportunity/generate', async (req: Request, res: Response) => {
   const user = (req as Request & { user?: { role: string } }).user;
-  if (user?.role !== 'admin') { res.status(403).json({ error: 'Admin only' }); return; }
+  if (!isAdminTier(user?.role)) { res.status(403).json({ error: 'Admin only' }); return; }
 
   res.json({ status: 'generating', message: 'Opportunity calculation started.' });
 
@@ -179,7 +180,7 @@ router.get('/creatives/:adAccountId', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.post('/creatives/scan', async (req: Request, res: Response) => {
   const user = (req as Request & { user?: { role: string } }).user;
-  if (user?.role !== 'admin') { res.status(403).json({ error: 'Admin only' }); return; }
+  if (!isAdminTier(user?.role)) { res.status(403).json({ error: 'Admin only' }); return; }
 
   res.json({ status: 'scanning', message: 'Creative intelligence scan started.' });
 
@@ -236,7 +237,7 @@ router.get('/copilot/:clientName', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.post('/competitor/run', async (req: Request, res: Response) => {
   const user = (req as Request & { user?: { role: string } }).user;
-  if (user?.role !== 'admin') { res.status(403).json({ error: 'Admin only' }); return; }
+  if (!isAdminTier(user?.role)) { res.status(403).json({ error: 'Admin only' }); return; }
 
   res.json({ status: 'running', message: 'Competitor pulse started.' });
 

@@ -65,6 +65,7 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin', description: 'Full access to everything' },
   { value: 'manager_ops', label: 'Manager — Ops', description: 'Contacts, deals, automations, reports' },
   { value: 'manager_ads', label: 'Manager — Ads', description: 'Ads and marketing only' },
+  { value: 'team_lead', label: 'Team Lead', description: 'Operational tools (Outreach, Intelligence, Growth OS, Ads) but no Billing/Permissions' },
   { value: 'sales', label: 'Sales', description: 'Contacts, deals, pipeline' },
   { value: 'staff', label: 'Staff', description: 'Social and basic features only' },
 ];
@@ -159,6 +160,7 @@ function AddUserModal({ onClose, onCreated }) {
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
               <option value="staff">Staff</option>
               <option value="sales">Sales</option>
+              <option value="team_lead">Team Lead</option>
               <option value="manager_ops">Manager (Ops)</option>
               <option value="manager_ads">Manager (Ads)</option>
               <option value="admin">Admin</option>

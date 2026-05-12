@@ -3,31 +3,43 @@ import { db, users } from '../db/index';
 import { eq } from 'drizzle-orm';
 
 // Permission → which roles are allowed
+// `team_lead` sits between sales and admin: full operational access (Contacts,
+// Pipeline, Tasks, Meta Ads, Outreach, AI Intelligence, Growth OS, Templates,
+// Lead Discovery, Short Links) but NOT financial/security tools (Billing,
+// Permissions, Audit, Pipeline Manager, SEO, Analytics).
 const PERMISSION_MAP: Record<string, string[]> = {
-  CONTACTS_VIEW:       ['admin', 'manager_ops', 'sales'],
+  CONTACTS_VIEW:       ['admin', 'manager_ops', 'team_lead', 'sales'],
   CONTACTS_EXPORT:     ['admin'],
   CONTACTS_BULK_DELETE: ['admin'],
-  DEALS_VIEW:          ['admin', 'manager_ops', 'sales'],
-  DEALS_EDIT:          ['admin', 'manager_ops', 'sales'],
-  QUALIFICATION_VIEW:  ['admin', 'manager_ops', 'sales'],
-  SEQUENCES_VIEW:      ['admin', 'manager_ops', 'sales'],
-  SEQUENCES_EDIT:      ['admin', 'manager_ops'],
-  AUTOMATIONS_VIEW:    ['admin', 'manager_ops', 'sales'],
-  AUTOMATIONS_EDIT:    ['admin', 'manager_ops'],
-  ADS_VIEW:            ['admin', 'manager_ads'],
-  ADS_MANAGE:          ['admin', 'manager_ads'],
+  DEALS_VIEW:          ['admin', 'manager_ops', 'team_lead', 'sales'],
+  DEALS_EDIT:          ['admin', 'manager_ops', 'team_lead', 'sales'],
+  QUALIFICATION_VIEW:  ['admin', 'manager_ops', 'team_lead', 'sales'],
+  SEQUENCES_VIEW:      ['admin', 'manager_ops', 'team_lead', 'sales'],
+  SEQUENCES_EDIT:      ['admin', 'manager_ops', 'team_lead'],
+  AUTOMATIONS_VIEW:    ['admin', 'manager_ops', 'team_lead', 'sales'],
+  AUTOMATIONS_EDIT:    ['admin', 'manager_ops', 'team_lead'],
+  ADS_VIEW:            ['admin', 'manager_ads', 'team_lead'],
+  ADS_MANAGE:          ['admin', 'manager_ads', 'team_lead'],
   REPORTS_VIEW:        ['admin', 'manager_ops', 'manager_ads'],
-  SOCIAL_VIEW:         ['admin', 'manager_ops', 'staff'],
-  SOCIAL_POST:         ['admin', 'manager_ops', 'staff'],
-  INBOX_VIEW:          ['admin', 'manager_ops', 'sales'],
+  SOCIAL_VIEW:         ['admin', 'manager_ops', 'team_lead', 'staff'],
+  SOCIAL_POST:         ['admin', 'manager_ops', 'team_lead', 'staff'],
+  INBOX_VIEW:          ['admin', 'manager_ops', 'team_lead', 'sales'],
   BILLING_VIEW:        ['admin'],
-  HEALTH_VIEW:         ['admin', 'manager_ops', 'sales'],
+  HEALTH_VIEW:         ['admin', 'manager_ops', 'team_lead', 'sales'],
   PERMISSIONS_VIEW:    ['admin'],
   AUDIT_VIEW:          ['admin'],
   MARKETING_VIEW:      ['admin', 'manager_ads'],
   MARKETING_MANAGE:    ['admin', 'manager_ads'],
-  DISCOVERY_VIEW:      ['admin', 'manager_ops', 'sales'],
+  DISCOVERY_VIEW:      ['admin', 'manager_ops', 'team_lead', 'sales'],
 };
+
+// Roles that get admin-tier operational tools (Outreach, AI Intelligence,
+// Growth OS) — gated separately from PERMISSION_MAP because these are
+// inline-checked in route handlers rather than via requirePermission.
+export const ADMIN_TIER_ROLES = ['admin', 'team_lead'];
+export function isAdminTier(role: string | undefined): boolean {
+  return ADMIN_TIER_ROLES.includes(role || '');
+}
 
 export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {

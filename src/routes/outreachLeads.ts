@@ -19,6 +19,7 @@ import { Router, type Request, type Response } from 'express';
 import logger from '../utils/logger';
 import { insertOutreachLead } from '../services/outreachLeadsService';
 import { pool } from '../db/index';
+import { isAdminTier } from '../middleware/rbac';
 
 const router = Router();
 
@@ -26,8 +27,8 @@ const router = Router();
 // Internal-secret auth (same pattern as imapReplies.ts)
 // ---------------------------------------------------------------------------
 function checkInternalSecret(req: Request, res: Response): boolean {
-  // Accept JWT auth from CRM frontend (admin users)
-  if ((req as Request & { user?: { role: string } }).user?.role === 'admin') return true;
+  // Accept JWT auth from CRM frontend (admin-tier users: admin or team_lead)
+  if (isAdminTier((req as Request & { user?: { role: string } }).user?.role)) return true;
 
   const secret = process.env.OUTREACH_INTERNAL_SECRET;
   if (!secret) {

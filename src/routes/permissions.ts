@@ -7,7 +7,7 @@ import crypto from 'crypto';
 
 const router = Router();
 
-const VALID_ROLES = ['admin', 'manager_ops', 'manager_ads', 'sales', 'staff'];
+const VALID_ROLES = ['admin', 'manager_ops', 'manager_ads', 'team_lead', 'sales', 'staff'];
 
 function generatePassword(): string {
   // 12 chars: mixed case + digits — readable but reasonable entropy.
@@ -231,7 +231,6 @@ router.patch('/users/:userId/role', async (req: Request, res: Response) => {
   if (!myPerms?.isOwner) { res.status(403).json({ error: 'owner only' }); return; }
 
   const { role } = req.body as { role: string };
-  const VALID_ROLES = ['admin', 'manager_ops', 'manager_ads', 'sales', 'staff'];
   if (!role || !VALID_ROLES.includes(role)) {
     res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
     return;

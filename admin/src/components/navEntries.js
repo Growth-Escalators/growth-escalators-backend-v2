@@ -6,18 +6,27 @@ import {
 
 // Permission flag bag — derived from user role + per-user permission overrides.
 // Matches the gating that lived inline in Sidebar.jsx pre-refactor.
+//
+// Role hierarchy (low → high trust):
+//   staff < sales < team_lead < manager_ops/manager_ads < admin
+// `team_lead` = full operational tools (Outreach, AI Intelligence, Growth OS,
+// Meta Ads) but NOT financial/security tools (Billing, Permissions, Audit).
 export function computeFlags(role, perms = {}) {
   const isAdmin = role === 'admin';
+  const isTeamLead = role === 'team_lead';
+  const isAdminTier = isAdmin || isTeamLead;
   return {
     isAdmin,
-    canCRM:        ['admin', 'manager_ops', 'sales'].includes(role),
-    canAds:        ['admin', 'manager_ads'].includes(role) || !!perms.reportsMetaAds,
+    isTeamLead,
+    isAdminTier,
+    canCRM:        ['admin', 'manager_ops', 'team_lead', 'sales'].includes(role),
+    canAds:        ['admin', 'manager_ads', 'team_lead'].includes(role) || !!perms.reportsMetaAds,
     canReports:    ['admin', 'manager_ops', 'manager_ads'].includes(role),
-    canSocial:     ['admin', 'manager_ops', 'staff'].includes(role) || !!perms.accessSocial,
-    canInbox:      ['admin', 'manager_ops', 'sales'].includes(role),
+    canSocial:     ['admin', 'manager_ops', 'team_lead', 'staff'].includes(role) || !!perms.accessSocial,
+    canInbox:      ['admin', 'manager_ops', 'team_lead', 'sales'].includes(role),
     canBilling:    isAdmin || !!perms.billingView,
-    canSequences:  ['admin', 'manager_ops', 'sales'].includes(role),
-    canDiscovery:  ['admin', 'manager_ops', 'sales'].includes(role),
+    canSequences:  ['admin', 'manager_ops', 'team_lead', 'sales'].includes(role),
+    canDiscovery:  ['admin', 'manager_ops', 'team_lead', 'sales'].includes(role),
     canMarketing:  ['admin', 'manager_ads'].includes(role),
     canSEO:        ['admin', 'manager_ops', 'manager_ads'].includes(role),
   };
@@ -85,7 +94,7 @@ export const NAV_ENTRIES = [
   {
     id: 'outreach', label: 'Outreach', to: '/outreach-dashboard',
     icon: Target, section: 'Marketing', group: null,
-    visible: f => f.isAdmin,
+    visible: f => f.isAdminTier,
   },
   {
     id: 'content', label: 'Content', href: 'https://content.growthescalators.com',
@@ -97,7 +106,7 @@ export const NAV_ENTRIES = [
   {
     id: 'intelligence', label: 'AI Intelligence', to: '/intelligence',
     icon: Brain, section: 'AI & Automation', group: null,
-    visible: f => f.isAdmin,
+    visible: f => f.isAdminTier,
   },
 
   // ── TOOLS (collapsible) ───────────────────────────────────────
@@ -109,7 +118,7 @@ export const NAV_ENTRIES = [
   {
     id: 'growth-os', label: 'Growth OS', to: '/growth-os',
     icon: Zap, section: 'Tools', group: 'tools', newTab: true,
-    visible: f => f.isAdmin,
+    visible: f => f.isAdminTier,
   },
   {
     id: 'emails', label: 'Email Templates', to: '/emails',
