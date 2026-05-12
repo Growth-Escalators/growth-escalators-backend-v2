@@ -48,6 +48,12 @@ export interface InvoiceData {
   notes: string | null;
   paymentNote: string | null;
   sacCode: string;
+  // Status — when 'paid', render the document as a payment receipt:
+  // header badge flips to PAID, diagonal "PAID" watermark across the page,
+  // bank details replaced with payment confirmation block, paid-on date shown.
+  status?: 'draft' | 'sent' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled' | null;
+  paidAt?: Date | null;
+  amountPaid?: number | null; // paise — relevant for partially_paid
 }
 
 export async function generateInvoicePDF(data: InvoiceData): Promise<Buffer> {
@@ -62,9 +68,15 @@ export async function generateInvoicePDF(data: InvoiceData): Promise<Buffer> {
     const W = 515;
     const primaryColor = '#1A3A5C';
     const accentColor = '#F97316';
+    const paidColor = '#16A34A'; // emerald-600 — used everywhere status is paid
     const lightGray = '#F3F4F6';
     const darkGray = '#374151';
     const midGray = '#6B7280';
+
+    const isPaid = data.status === 'paid';
+    const isPartial = data.status === 'partially_paid';
+    const isCancelled = data.status === 'cancelled';
+    const badgeColor = isPaid ? paidColor : accentColor;
 
     // ── HEADER ──
     doc.rect(40, 40, W, 70).fill(primaryColor);
@@ -76,10 +88,17 @@ export async function generateInvoicePDF(data: InvoiceData): Promise<Buffer> {
       doc.text(`GSTIN: ${data.companyGstin}`, 55, 91);
     }
 
-    const badgeText = data.invoiceType === 'gst' ? 'TAX INVOICE' : 'INVOICE';
-    doc.rect(380, 48, 130, 24).fill(accentColor);
-    doc.fillColor('#FFFFFF').fontSize(11).font('Helvetica-Bold')
-       .text(badgeText, 380, 53, { width: 130, align: 'center' });
+    // Header badge — flips between INVOICE / TAX INVOICE / RECEIPT depending on
+    // status. Paid invoices read as a receipt the client can keep.
+    let badgeText: string;
+    if (isPaid) badgeText = data.invoiceType === 'gst' ? 'PAID · TAX RECEIPT' : 'PAID · RECEIPT';
+    else if (isCancelled) badgeText = 'CANCELLED';
+    else if (isPartial) badgeText = 'PARTIALLY PAID';
+    else badgeText = data.invoiceType === 'gst' ? 'TAX INVOICE' : 'INVOICE';
+
+    doc.rect(380, 48, 130, 24).fill(badgeColor);
+    doc.fillColor('#FFFFFF').fontSize(badgeText.length > 18 ? 9 : 11).font('Helvetica-Bold')
+       .text(badgeText, 380, badgeText.length > 18 ? 55 : 53, { width: 130, align: 'center' });
 
     // ── INVOICE META ──
     doc.rect(40, 120, W, 1).fill('#E5E7EB');
@@ -87,15 +106,27 @@ export async function generateInvoicePDF(data: InvoiceData): Promise<Buffer> {
        .text('INVOICE DETAILS', 40, 130);
 
     const metaY = 148;
+    const fmtDate = (d: Date) =>
+      d.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+
     doc.fillColor(midGray).fontSize(9).font('Helvetica')
        .text('Invoice Number:', 40, metaY)
        .text('Invoice Date:', 40, metaY + 16)
-       .text('Due Date:', 40, metaY + 32);
+       .text(isPaid ? 'Paid On:' : 'Due Date:', 40, metaY + 32);
 
-    doc.fillColor(darkGray).font('Helvetica-Bold')
+    doc.fillColor(isPaid ? paidColor : darkGray).font('Helvetica-Bold')
        .text(data.invoiceNumber, 150, metaY)
-       .text(data.invoiceDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }), 150, metaY + 16)
-       .text(data.dueDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }), 150, metaY + 32);
+       .text(fmtDate(data.invoiceDate), 150, metaY + 16);
+
+    // Date line — for paid invoices, show paid date (fall back to due date).
+    if (isPaid) {
+      const paidOn = data.paidAt ?? data.dueDate;
+      doc.fillColor(paidColor).font('Helvetica-Bold')
+         .text(fmtDate(paidOn), 150, metaY + 32);
+    } else {
+      doc.fillColor(darkGray).font('Helvetica-Bold')
+         .text(fmtDate(data.dueDate), 150, metaY + 32);
+    }
 
     // ── BILL TO ──
     doc.rect(300, 120, 1, 80).fill('#E5E7EB');
@@ -200,9 +231,45 @@ export async function generateInvoicePDF(data: InvoiceData): Promise<Buffer> {
     doc.fillColor(darkGray).font('Helvetica-Bold').fontSize(9)
        .text(data.amountInWords, 48, wordsY + 14, { width: W - 16 });
 
-    // ── BANK DETAILS or PAYMENT NOTE ──
+    // ── PAYMENT BLOCK ──
+    // For paid invoices: show a green "Payment received" confirmation block
+    // and HIDE the bank-details (client doesn't need them anymore — they already paid).
+    // For unpaid: show bank details (GST) or the freeform payment note (non-GST).
     const bankY = wordsY + 36;
-    if (data.invoiceType === 'gst' && data.companyBank) {
+    if (isPaid) {
+      doc.rect(40, bankY, W, 60).fill('#ECFDF5'); // emerald-50
+      doc.rect(40, bankY, 4, 60).fill(paidColor);
+      doc.fillColor(paidColor).fontSize(12).font('Helvetica-Bold')
+         .text('PAYMENT RECEIVED', 56, bankY + 10);
+      doc.fillColor(darkGray).fontSize(9).font('Helvetica')
+         .text(
+           `Received ₹${(data.totalAmount / 100).toLocaleString('en-IN')} on ${fmtDate(data.paidAt ?? data.dueDate)}.`,
+           56, bankY + 28, { width: W - 20 },
+         )
+         .text(
+           'This document serves as a receipt for the above payment. No further action is required.',
+           56, bankY + 42, { width: W - 20 },
+         );
+    } else if (isPartial && data.amountPaid != null && data.amountPaid > 0) {
+      const remaining = Math.max(0, data.totalAmount - data.amountPaid);
+      doc.rect(40, bankY, W, 60).fill('#FEF3C7'); // amber-100
+      doc.rect(40, bankY, 4, 60).fill('#D97706'); // amber-600
+      doc.fillColor('#92400E').fontSize(12).font('Helvetica-Bold')
+         .text('PARTIAL PAYMENT RECEIVED', 56, bankY + 10);
+      doc.fillColor(darkGray).fontSize(9).font('Helvetica')
+         .text(
+           `Received ₹${(data.amountPaid / 100).toLocaleString('en-IN')}. Balance due: ₹${(remaining / 100).toLocaleString('en-IN')}.`,
+           56, bankY + 28, { width: W - 20 },
+         );
+      // Still show bank details below since balance is due
+      if (data.invoiceType === 'gst' && data.companyBank) {
+        const bY2 = bankY + 72;
+        doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold')
+           .text('Bank Details (for balance)', 40, bY2);
+        doc.fillColor(midGray).fontSize(9).font('Helvetica')
+           .text(`Bank: ICICI Bank   Account: ${data.companyBank.accountNo}   IFSC: ${data.companyBank.ifsc}`, 40, bY2 + 14, { width: W });
+      }
+    } else if (data.invoiceType === 'gst' && data.companyBank) {
       doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold')
          .text('Bank Details', 40, bankY);
       doc.fillColor(midGray).fontSize(9).font('Helvetica')
@@ -229,9 +296,31 @@ export async function generateInvoicePDF(data: InvoiceData): Promise<Buffer> {
     // ── FOOTER ──
     doc.rect(40, 780, W, 1).fill('#E5E7EB');
     doc.fillColor(midGray).fontSize(8).font('Helvetica')
-       .text('This is a computer generated invoice.', 40, 786, { width: W, align: 'center' });
-    doc.fillColor(accentColor).font('Helvetica-Bold')
-       .text('Thank you for your business!', 40, 798, { width: W, align: 'center' });
+       .text(
+         isPaid
+           ? 'This is a computer generated receipt. Retain for your records.'
+           : isCancelled
+             ? 'This invoice has been cancelled.'
+             : 'This is a computer generated invoice.',
+         40, 786, { width: W, align: 'center' },
+       );
+    doc.fillColor(isPaid ? paidColor : accentColor).font('Helvetica-Bold')
+       .text(isPaid ? 'Payment received — thank you!' : 'Thank you for your business!',
+             40, 798, { width: W, align: 'center' });
+
+    // ── DIAGONAL "PAID" WATERMARK ──
+    // Drawn last so it sits above the content. Light-fill + low opacity so the
+    // document below stays readable. Diagonal at ~30° across the page.
+    if (isPaid || isCancelled) {
+      doc.save();
+      doc.translate(297, 421); // page centre on A4
+      doc.rotate(-30);
+      doc.fillColor(isPaid ? paidColor : '#9CA3AF').opacity(0.12)
+         .fontSize(140).font('Helvetica-Bold')
+         .text(isPaid ? 'PAID' : 'CANCELLED', -260, -70, { width: 520, align: 'center' });
+      doc.opacity(1);
+      doc.restore();
+    }
 
     doc.end();
   });
