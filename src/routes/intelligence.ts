@@ -4,6 +4,7 @@ import logger from '../utils/logger';
 import { collectDailyData } from '../services/intelligenceDataCollector';
 import { analyzeWithClaude, ensureIntelligenceTable } from '../services/intelligenceAnalyzer';
 import { deliverDailyIntelligence } from '../services/intelligenceDelivery';
+import { isAdminTier } from '../middleware/rbac';
 
 const router = Router();
 
@@ -144,7 +145,7 @@ const RUN_CRON_WHITELIST: Record<string, () => Promise<unknown>> = {
 
 router.post('/run-cron/:name', async (req: Request, res: Response) => {
   const user = (req as Request & { user?: { role: string } }).user;
-  if (user?.role !== 'admin') {
+  if (!isAdminTier(user?.role)) {
     res.status(403).json({ error: 'Admin only' });
     return;
   }
@@ -210,7 +211,7 @@ const GENERATION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 // ---------------------------------------------------------------------------
 router.post('/generate', async (req: Request, res: Response) => {
   const user = (req as Request & { user?: { role: string } }).user;
-  if (user?.role !== 'admin') {
+  if (!isAdminTier(user?.role)) {
     res.status(403).json({ error: 'Admin only' });
     return;
   }

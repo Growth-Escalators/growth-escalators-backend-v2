@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { pool } from '../db/index';
 import logger from '../utils/logger';
+import { isAdminTier } from '../middleware/rbac';
 
 const router = Router();
 
@@ -468,7 +469,7 @@ async function logAction(action: string, details: Record<string, unknown>, req: 
 // ---------------------------------------------------------------------------
 router.post('/chat', async (req: Request, res: Response) => {
   const user = (req as Request & { user?: { role: string; id: string; email: string } }).user;
-  if (user?.role !== 'admin') {
+  if (!isAdminTier(user?.role)) {
     res.status(403).json({ error: 'Admin only' });
     return;
   }
