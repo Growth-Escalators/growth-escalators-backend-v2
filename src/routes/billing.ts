@@ -759,10 +759,19 @@ router.get('/invoices/:id/pdf', async (req: Request, res: Response) => {
       notes: inv.notes,
       paymentNote: inv.paymentNote,
       sacCode: inv.sacCode ?? '9983',
+      status: (inv.status as InvoiceData['status']) ?? null,
+      paidAt: inv.paidAt ? new Date(inv.paidAt) : null,
+      amountPaid: inv.amountPaid ?? null,
     };
 
     const pdfBuffer = await generateInvoicePDF(pdfData);
-    const filename = `${inv.invoiceNumber.replace(/\//g, '-')}.pdf`;
+    // Filename reflects the document type — paid invoices download as RECEIPT.
+    const suffix = inv.status === 'paid'
+      ? '-RECEIPT'
+      : inv.status === 'cancelled'
+        ? '-CANCELLED'
+        : '';
+    const filename = `${inv.invoiceNumber.replace(/\//g, '-')}${suffix}.pdf`;
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
