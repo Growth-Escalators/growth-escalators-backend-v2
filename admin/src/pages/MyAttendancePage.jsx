@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import TopBar from '../components/TopBar.jsx';
 import { apiFetch, logout } from '../lib/api.js';
-import { Clock, LogIn, LogOut, AlertTriangle, CheckCircle2, Calendar, Home, Building2 } from 'lucide-react';
+import { Clock, LogIn, LogOut, AlertTriangle, CheckCircle2, Calendar, Home, Building2, X, Plus } from 'lucide-react';
 
 function StatBadge({ label, value, color = 'slate' }) {
   const colors = {
@@ -43,11 +43,20 @@ export default function MyAttendancePage() {
   const [today, setToday] = useState(null);
   const [history, setHistory] = useState([]);
   const [historySummary, setHistorySummary] = useState(null);
+  const [myLeaves, setMyLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actioning, setActioning] = useState(false);
   const [error, setError] = useState('');
   const [banner, setBanner] = useState(null); // { kind: 'success' | 'late' | 'error', text: string }
   const [workLocation, setWorkLocation] = useState('office'); // 'office' | 'home'
+  const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({
+    leaveType: 'casual',
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: new Date().toISOString().slice(0, 10),
+    reason: '',
+  });
+  const [submittingLeave, setSubmittingLeave] = useState(false);
 
   const month = new Date().toISOString().slice(0, 7);
 
@@ -55,13 +64,15 @@ export default function MyAttendancePage() {
     setLoading(true);
     setError('');
     try {
-      const [t, h] = await Promise.all([
+      const [t, h, l] = await Promise.all([
         apiFetch('/api/self-service/today'),
         apiFetch(`/api/self-service/my-attendance?month=${month}`),
+        apiFetch('/api/self-service/my-leaves').catch(() => []),
       ]);
       setToday(t);
       setHistory(h.records || []);
       setHistorySummary(h.summary || null);
+      setMyLeaves(Array.isArray(l) ? l : []);
     } catch (e) {
       setError(e.message || 'Failed to load attendance');
     } finally {
@@ -111,6 +122,36 @@ export default function MyAttendancePage() {
     } catch (e) {
       setBanner({ kind: 'error', text: e.message || 'Check-out failed' });
       setActioning(false);
+    }
+  }
+
+  async function submitLeaveRequest(e) {
+    e.preventDefault();
+    setSubmittingLeave(true);
+    try {
+      // For half-day, force endDate to match startDate — half-day always
+      // belongs to a single calendar date regardless of what the user picks.
+      const isHalfDay = leaveForm.leaveType === 'half_day';
+      const body = {
+        leaveType: leaveForm.leaveType,
+        startDate: leaveForm.startDate,
+        endDate: isHalfDay ? leaveForm.startDate : leaveForm.endDate,
+        reason: leaveForm.reason,
+      };
+      await apiFetch('/api/self-service/leave-request', { method: 'POST', body: JSON.stringify(body) });
+      setBanner({ kind: 'success', text: 'Leave request submitted — admin will review shortly.' });
+      setShowLeaveForm(false);
+      setLeaveForm({
+        leaveType: 'casual',
+        startDate: new Date().toISOString().slice(0, 10),
+        endDate: new Date().toISOString().slice(0, 10),
+        reason: '',
+      });
+      await loadAll();
+    } catch (e) {
+      setBanner({ kind: 'error', text: e.message || 'Leave request failed' });
+    } finally {
+      setSubmittingLeave(false);
     }
   }
 
@@ -276,17 +317,139 @@ export default function MyAttendancePage() {
             </div>
           )}
 
-          {/* Leave balances */}
+          {/* Leave balances + request action */}
           {today?.leaveBalances && (
             <div className="bg-white border border-slate-200 rounded-2xl p-5">
-              <h2 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-slate-400" />
-                Leave balances
-              </h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  Leave balances
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowLeaveForm(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Request time off
+                </button>
+              </div>
               <div className="grid grid-cols-3 gap-3">
                 <StatBadge label="Casual" value={today.leaveBalances.casual_leave_balance ?? 0} color="blue" />
                 <StatBadge label="Sick" value={today.leaveBalances.sick_leave_balance ?? 0} color="amber" />
                 <StatBadge label="Earned" value={today.leaveBalances.earned_leave_balance ?? 0} color="green" />
+              </div>
+            </div>
+          )}
+
+          {/* My leave requests */}
+          {myLeaves.length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                <h2 className="text-sm font-bold text-slate-900">My leave requests</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      <th className="px-4 py-2">Type</th>
+                      <th className="px-4 py-2">Dates</th>
+                      <th className="px-4 py-2 text-right">Days</th>
+                      <th className="px-4 py-2">Status</th>
+                      <th className="px-4 py-2">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myLeaves.slice(0, 10).map((l) => (
+                      <tr key={l.id} className="border-t border-slate-50">
+                        <td className="px-4 py-2.5 capitalize text-slate-700">{(l.leave_type || '').replace('_', '-')}</td>
+                        <td className="px-4 py-2.5 text-slate-700">
+                          {fmtDate(l.start_date)}{l.leave_type === 'half_day' || l.start_date === l.end_date ? '' : ` — ${fmtDate(l.end_date)}`}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-slate-700">{Number(l.days).toFixed(1)}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            l.status === 'approved' ? 'bg-emerald-100 text-emerald-700'
+                            : l.status === 'rejected' ? 'bg-red-100 text-red-700'
+                            : 'bg-amber-100 text-amber-700'
+                          }`}>{l.status}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-slate-500 truncate max-w-[260px]" title={l.reason || ''}>{l.reason || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Leave request modal */}
+          {showLeaveForm && (
+            <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => !submittingLeave && setShowLeaveForm(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="text-base font-bold text-slate-900">Request time off</h3>
+                  <button onClick={() => setShowLeaveForm(false)} disabled={submittingLeave} className="text-slate-400 hover:text-slate-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <form onSubmit={submitLeaveRequest} className="space-y-3">
+                  <div>
+                    <label className="text-xs text-slate-500 font-medium">Type</label>
+                    <select
+                      value={leaveForm.leaveType}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, leaveType: e.target.value })}
+                      className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="casual">Casual leave</option>
+                      <option value="sick">Sick leave</option>
+                      <option value="earned">Earned leave</option>
+                      <option value="half_day">Half-day</option>
+                      <option value="unpaid">Unpaid</option>
+                    </select>
+                  </div>
+                  <div className={leaveForm.leaveType === 'half_day' ? '' : 'grid grid-cols-2 gap-3'}>
+                    <div>
+                      <label className="text-xs text-slate-500 font-medium">
+                        {leaveForm.leaveType === 'half_day' ? 'Date' : 'Start date'}
+                      </label>
+                      <input
+                        type="date"
+                        value={leaveForm.startDate}
+                        onChange={(e) => setLeaveForm({ ...leaveForm, startDate: e.target.value, ...(leaveForm.leaveType === 'half_day' ? { endDate: e.target.value } : {}) })}
+                        className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required
+                      />
+                    </div>
+                    {leaveForm.leaveType !== 'half_day' && (
+                      <div>
+                        <label className="text-xs text-slate-500 font-medium">End date</label>
+                        <input
+                          type="date"
+                          value={leaveForm.endDate}
+                          min={leaveForm.startDate}
+                          onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
+                          className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 font-medium">Reason</label>
+                    <textarea
+                      rows={3}
+                      value={leaveForm.reason}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                      placeholder={leaveForm.leaveType === 'half_day' ? 'e.g. AM half — doctor appointment' : 'Optional context for the approver'}
+                      className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button type="button" onClick={() => setShowLeaveForm(false)} disabled={submittingLeave} className="flex-1 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+                    <button type="submit" disabled={submittingLeave} className="flex-1 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700 disabled:opacity-50">
+                      {submittingLeave ? 'Submitting…' : 'Submit request'}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}
