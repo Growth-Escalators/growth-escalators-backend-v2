@@ -12,6 +12,10 @@ import Header from './Header.jsx';
 import Board from './Board.jsx';
 import DetailPanel from './DetailPanel.jsx';
 import FocusView from './FocusView.jsx';
+import ListView from './ListView.jsx';
+import CalendarView from './CalendarView.jsx';
+import BulkToolbar from './BulkToolbar.jsx';
+import TeamPerformanceTab from './TeamPerformanceTab.jsx';
 import { applyFilters } from './lib/filterPipeline.js';
 import { withSmartRanks } from './lib/smartRank.js';
 
@@ -23,7 +27,7 @@ const COLLAPSED_KEY = 'ge-crm-tasks-collapsed-cols';
 const DENSITY_KEY = 'ge-crm-tasks-density';        // compact | default | cozy
 
 const VALID_SCOPES = ['mine', 'all', 'today'];
-const VALID_SUBVIEWS = ['board', 'focus', 'list', 'calendar'];
+const VALID_SUBVIEWS = ['board', 'focus', 'list', 'calendar', 'team'];
 const VALID_DENSITIES = ['compact', 'default', 'cozy'];
 
 function loadString(key, fallback, valid) {
@@ -73,6 +77,18 @@ export default function TasksPage() {
 
   // Detail panel (Layer C) — id of the task the user has open in the side panel
   const [openTaskId, setOpenTaskId] = useState(null);
+
+  // Multi-select state — used by ListView checkboxes + BulkToolbar
+  const [selectedIds, setSelectedIds] = useState([]);
+  const toggleSelect = useCallback((id) => {
+    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  }, []);
+  const clearSelection = useCallback(() => setSelectedIds([]), []);
+
+  // Force-bust admin-only views when scope changes (admin demoted, etc.)
+  useEffect(() => {
+    if (subView === 'team' && currentUser?.role !== 'admin') setSubView('board');
+  }, [subView, currentUser]);
 
   // Persist
   useEffect(() => { try { localStorage.setItem(VIEW_KEY, scope); } catch {} }, [scope]);
@@ -195,6 +211,37 @@ export default function TasksPage() {
     setCollapsedCols((c) => (c.includes(k) ? c.filter((x) => x !== k) : [...c, k]));
   }, []);
 
+  const removeTask = useCallback(async (id) => {
+    let snapshot = null;
+    setTasks((ts) => { snapshot = ts; return ts.filter((t) => t.id !== id); });
+    setSelectedIds((ids) => ids.filter((x) => x !== id));
+    try {
+      await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      if (snapshot) setTasks(snapshot);
+      setError(e.message || 'Delete failed');
+    }
+  }, []);
+
+  const onCreateOnDay = useCallback((d) => {
+    const dueIso = new Date(`${d.toISOString().slice(0, 10)}T12:00:00`).toISOString();
+    onQuickAdd('not_started', 'New task', { dueAt: dueIso });
+  }, [onQuickAdd]);
+
+  const onBulkApplied = useCallback((updatedTasks) => {
+    if (!Array.isArray(updatedTasks)) { loadAll(); return; }
+    setTasks((ts) => {
+      const byId = new Map(updatedTasks.map((u) => [u.id, u]));
+      return ts.map((t) => (byId.has(t.id) ? { ...t, ...byId.get(t.id) } : t));
+    });
+    clearSelection();
+  }, [clearSelection, loadAll]);
+
+  const onBulkDeleted = useCallback((ids) => {
+    setTasks((ts) => ts.filter((t) => !ids.includes(t.id)));
+    clearSelection();
+  }, [clearSelection]);
+
   // Detail panel: clicking a card opens the right-side slide-in. We also
   // remember the last-opened task id so we can restore focus to its card
   // when the panel closes (a11y — Layer E focus-management). The card
@@ -301,17 +348,42 @@ export default function TasksPage() {
             onPatchTask={patchTask}
             smartSort={smartSort}
           />
-        ) : (
-          <div className="flex-1 flex items-center justify-center bg-slate-50/60">
-            <div className="text-center max-w-sm px-6">
-              <p className="text-sm font-medium text-slate-700">
-                {subView === 'list' ? 'List view' : 'Calendar view'}
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Ships in a later layer. Switch back to Board to keep working.
-              </p>
-            </div>
+        ) : subView === 'list' ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            <ListView
+              tasks={visibleRanked}
+              team={team}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onOpen={onOpenTask}
+              onPatchTask={patchTask}
+              onDelete={removeTask}
+            />
           </div>
+        ) : subView === 'calendar' ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            <CalendarView
+              tasks={visibleRanked}
+              team={team}
+              onOpen={onOpenTask}
+              onCreateOnDay={onCreateOnDay}
+              onPatchTask={patchTask}
+            />
+          </div>
+        ) : subView === 'team' ? (
+          <div className="flex-1 min-h-0 overflow-auto">
+            <TeamPerformanceTab />
+          </div>
+        ) : null}
+
+        {selectedIds.length > 0 && (
+          <BulkToolbar
+            selectedIds={selectedIds}
+            team={team}
+            onClear={clearSelection}
+            onApplied={onBulkApplied}
+            onDeleted={onBulkDeleted}
+          />
         )}
 
         {openTask && (
