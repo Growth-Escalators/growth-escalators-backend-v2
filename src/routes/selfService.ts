@@ -4,7 +4,6 @@ import logger from '../utils/logger';
 
 const router = Router();
 
-const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const DEFAULT_EXPECTED_START = '09:30:00';
 
 // Server-clock IST helpers (Railway runs UTC; convert at request time)
@@ -47,7 +46,8 @@ function minutesBetween(start: string, end: string): number {
 router.post('/check-in', async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const tenantId = req.user?.tenantId;
+    if (!userId || !tenantId) return res.status(401).json({ error: 'Not authenticated' });
 
     const member = await pool.query(
       'SELECT id, name, expected_start_time FROM team_payroll WHERE user_id = $1 AND is_active = true',
@@ -106,7 +106,7 @@ router.post('/check-in', async (req: Request, res: Response) => {
         work_location = COALESCE(team_attendance.work_location, $9),
         updated_at = NOW()
       RETURNING *
-    `, [DEFAULT_TENANT_ID, memberId, today, now, ip, ua, isLate, isLate ? lateMinutes : null, workLocation]);
+    `, [tenantId, memberId, today, now, ip, ua, isLate, isLate ? lateMinutes : null, workLocation]);
 
     const row = result.rows[0] as { check_in: string; is_late: boolean; late_minutes: number | null };
     logger.info(
@@ -301,7 +301,8 @@ router.get('/today', async (req: Request, res: Response) => {
 router.post('/leave-request', async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const tenantId = req.user?.tenantId;
+    if (!userId || !tenantId) return res.status(401).json({ error: 'Not authenticated' });
 
     const member = await pool.query(
       'SELECT id, name FROM team_payroll WHERE user_id = $1 AND is_active = true',
@@ -314,15 +315,22 @@ router.post('/leave-request', async (req: Request, res: Response) => {
     };
     if (!startDate || !endDate) return res.status(400).json({ error: 'startDate and endDate are required' });
 
+    const ALLOWED = ['casual', 'sick', 'earned', 'unpaid', 'half_day'] as const;
+    const type = ALLOWED.includes(leaveType as typeof ALLOWED[number]) ? leaveType! : 'casual';
+
     const memberRow = member.rows[0] as { id: string; name: string };
     const memberId = memberRow.id;
-    const calcDays = days || (Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    // Half-day always counts as 0.5 days regardless of date range. Other types
+    // default to the inclusive day-count between start and end.
+    const calcDays = type === 'half_day'
+      ? 0.5
+      : (days || (Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1));
 
     const result = await pool.query(`
       INSERT INTO team_leaves (tenant_id, member_id, leave_type, start_date, end_date, days, reason, status)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
       RETURNING *
-    `, [DEFAULT_TENANT_ID, memberId, leaveType || 'casual', startDate, endDate, calcDays, reason]);
+    `, [tenantId, memberId, type, startDate, endDate, calcDays, reason]);
 
     logger.info(`[self-service] ${memberRow.name} requested ${calcDays} days ${leaveType || 'casual'} leave`);
     res.json({ message: 'Leave request submitted', leave: result.rows[0] });
