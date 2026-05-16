@@ -7,7 +7,7 @@
 // @-mentions against real users.
 
 import React from 'react';
-import { Sun, LayoutGrid, List as ListIcon, Calendar, Plus } from 'lucide-react';
+import { Sun, LayoutGrid, List as ListIcon, Calendar, Plus, BarChart3 } from 'lucide-react';
 import FilterBar from './FilterBar.jsx';
 import QuickCapture from './QuickCapture.jsx';
 import DensityMenu from './DensityMenu.jsx';
@@ -17,6 +17,7 @@ const VIEW_TABS = [
   { k: 'focus',    label: 'Focus',    Icon: Sun },
   { k: 'list',     label: 'List',     Icon: ListIcon },
   { k: 'calendar', label: 'Calendar', Icon: Calendar },
+  { k: 'team',     label: 'Team',     Icon: BarChart3, adminOnly: true },
 ];
 
 function todayLabel(d = new Date()) {
@@ -27,10 +28,10 @@ function todayLabel(d = new Date()) {
   return `${weekday}, ${month} ${day} · IST`;
 }
 
-function ViewSwitcher({ value, onChange }) {
+function ViewSwitcher({ value, onChange, isAdmin }) {
   return (
     <div className="inline-flex items-center bg-slate-100 rounded-lg p-0.5">
-      {VIEW_TABS.map((t) => {
+      {VIEW_TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => {
         const active = value === t.k;
         return (
           <button
@@ -78,7 +79,7 @@ export default function Header({
         <QuickCapture onCreate={onCreate} team={team} />
 
         <div className="ml-auto flex items-center gap-2">
-          <ViewSwitcher value={subView} onChange={onSubView} />
+          <ViewSwitcher value={subView} onChange={onSubView} isAdmin={currentUser?.role === 'admin'} />
           <DensityMenu value={density} onChange={onDensityChange} />
           <button
             type="button"
