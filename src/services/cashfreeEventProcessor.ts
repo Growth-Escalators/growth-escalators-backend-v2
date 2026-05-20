@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db, pool, tenants, deals, contacts, processedEvents, events } from '../db/index';
-import { findOrCreateContact } from './contactService';
+import { findOrCreateContact, normalizeChannelValue } from './contactService';
 import { sendPurchaseEvent } from './metaCapi';
 import { sendSlackMessage } from './slackService';
 import { getFunnelConfig, stageForAmount, labelForStage, renderTemplate } from './funnelConfigService';
@@ -344,9 +344,17 @@ export async function recordPendingOrder(input: {
   const [tenant] = await db.select().from(tenants).where(eq(tenants.slug, 'growth-escalators')).limit(1);
   if (!tenant) return;
 
+  // Same dedup-normalization as the paid-order path above. findOrCreateContact
+  // also normalizes defensively but doing it here keeps intent explicit.
   const channels: { channelType: 'email' | 'whatsapp'; channelValue: string; isPrimary?: boolean }[] = [];
-  if (input.email) channels.push({ channelType: 'email', channelValue: input.email, isPrimary: true });
-  if (input.phone) channels.push({ channelType: 'whatsapp', channelValue: input.phone.startsWith('91') ? input.phone : `91${input.phone.replace(/\D/g, '')}` });
+  if (input.email) {
+    const normEmail = normalizeChannelValue('email', input.email);
+    if (normEmail) channels.push({ channelType: 'email', channelValue: normEmail, isPrimary: true });
+  }
+  if (input.phone) {
+    const normPhone = normalizeChannelValue('whatsapp', input.phone);
+    if (normPhone) channels.push({ channelType: 'whatsapp', channelValue: normPhone });
+  }
 
   const parts = input.name.trim().split(' ');
   await findOrCreateContact(tenant.id, {

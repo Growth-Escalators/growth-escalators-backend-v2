@@ -10,6 +10,27 @@ interface ChannelInput {
   isPrimary?: boolean;
 }
 
+// Normalize a channel value for deduplication. Email is lowercased + trimmed.
+// Phone/whatsapp is stripped to digits and prefixed with `91` if missing.
+// Centralized here so every contact-write path applies the same rules — the
+// dedup invariant in CLAUDE.md depends on it.
+export function normalizeChannelValue(channelType: string, raw: string): string {
+  if (!raw) return '';
+  if (channelType === 'email') return raw.trim().toLowerCase();
+  if (channelType === 'whatsapp' || channelType === 'phone' || channelType === 'sms') {
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.startsWith('91') ? digits : `91${digits}`;
+  }
+  return raw.trim();
+}
+
+// Same shape as ChannelInput, but the value is already normalized at the call
+// site (or pushed through normalizeChannelValue before push).
+export function normalizeChannel(ch: ChannelInput): ChannelInput {
+  return { ...ch, channelValue: normalizeChannelValue(ch.channelType, ch.channelValue) };
+}
+
 interface FindOrCreateData {
   firstName: string;
   lastName?: string;
@@ -28,6 +49,14 @@ export async function findOrCreateContact(
   tenantId: string,
   data: FindOrCreateData,
 ): Promise<{ contact: Contact; channels: ContactChannel[]; created: boolean }> {
+  // Normalize every incoming channel value before the existence check. This is
+  // a defense-in-depth: callers SHOULD normalize, but doing it here means a
+  // forgotten lowercase upstream won't fragment contacts.
+  const normalizedChannels: ChannelInput[] = data.channels
+    .map(normalizeChannel)
+    .filter((ch) => ch.channelValue.length > 0);
+  data = { ...data, channels: normalizedChannels };
+
   // Check each channel for an existing match belonging to this tenant
   for (const ch of data.channels) {
     const existing = await db
