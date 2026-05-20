@@ -98,11 +98,19 @@ export async function processCashfreeEvent(
     utm_term: str(meta.utm_term) ?? null,
   };
 
-  // Idempotency check (before any writes). Wrap in try/catch so a transient DB
-  // error doesn't permanently lose the message — caller should retry.
-  const existing = await db.select().from(processedEvents).where(eq(processedEvents.eventId, cfPaymentId)).limit(1);
-  if (existing.length > 0) {
-    logger.info(`[cashfree] Already processed ${cfPaymentId} — skipping`);
+  // Atomic claim: insert into processed_events ON CONFLICT DO NOTHING. The
+  // event_id column has a unique constraint, so two parallel deliveries can't
+  // both claim — exactly one wins. If we don't get a row back, the event was
+  // either already processed OR another worker is processing it right now.
+  // Either way: bail without writing. This replaces an earlier SELECT-then-
+  // INSERT-at-end pattern that allowed both workers to do duplicate work
+  // before the second insert hit the unique constraint.
+  const claim = await db.insert(processedEvents)
+    .values({ eventId: cfPaymentId, source: 'cashfree' })
+    .onConflictDoNothing()
+    .returning();
+  if (claim.length === 0) {
+    logger.info(`[cashfree] ${cfPaymentId} already claimed — skipping`);
     return { ok: true, status: 'skipped', reason: 'already processed' };
   }
 
@@ -191,8 +199,8 @@ export async function processCashfreeEvent(
     );
   }
 
-  await db.insert(processedEvents).values({ eventId: cfPaymentId, source: 'cashfree' });
-  logger.info(`[cashfree] Marked ${cfPaymentId} as processed`);
+  // processed_events row was already inserted at the top of the function as
+  // part of the atomic claim — no second insert needed here.
 
   if (!fireSideEffects) {
     return { ok: true, status: 'processed', contactId: contact.id, stage };
