@@ -90,6 +90,12 @@ export default function TasksPage() {
     if (subView === 'team' && currentUser?.role !== 'admin') setSubView('board');
   }, [subView, currentUser]);
 
+  // Clear bulk-select when switching subViews. ListView is the only place
+  // where multi-select is exposed; if a user selects 3 tasks, switches to
+  // Board, then back to List, the stale selection used to persist and the
+  // BulkToolbar would re-mount with rows that may not be visible.
+  useEffect(() => { setSelectedIds([]); }, [subView]);
+
   // Persist
   useEffect(() => { try { localStorage.setItem(VIEW_KEY, scope); } catch {} }, [scope]);
   useEffect(() => { try { localStorage.setItem(SUBVIEW_KEY, subView); } catch {} }, [subView]);
@@ -277,6 +283,15 @@ export default function TasksPage() {
     () => (openTaskId ? tasks.find((t) => t.id === openTaskId) || null : null),
     [tasks, openTaskId],
   );
+
+  // If the open task is removed from the list (deleted, filtered out, or
+  // disappears after a reload) reset openTaskId so it can't quietly re-open
+  // when the task reappears via undo / refetch. The panel is already hidden
+  // via the `{openTask && ...}` guard at render time, but the id needs to
+  // come along.
+  useEffect(() => {
+    if (openTaskId && !openTask) setOpenTaskId(null);
+  }, [openTaskId, openTask]);
 
   // ESC closes the panel — only listen while it's open.
   useEffect(() => {
