@@ -88,22 +88,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     // Queue the pending-order signal for the CRM. Best-effort — if the queue
     // is misconfigured we still return the payment session so the buyer can
-    // pay; a missed pending row only affects internal funnel analytics.
-    enqueue('pending_order', {
-      orderId,
-      name,
-      email,
-      phone,
-      segment: body.segment,
-      bump1: body.bump1,
-      bump2: body.bump2,
-      funnelSlug: body.funnelSlug ?? 'ecom',
-      utm_source: body.utm_source ?? null,
-      utm_medium: body.utm_medium ?? null,
-      utm_campaign: body.utm_campaign ?? null,
-      utm_content: body.utm_content ?? null,
-      utm_term: body.utm_term ?? null,
-    }).catch((e) => console.warn('[edge create-order] queue failed:', (e as Error).message));
+    // pay; a missed pending row only affects internal funnel analytics. We
+    // await it (instead of fire-and-forget) so the write completes before the
+    // function returns — Vercel can freeze the function after res.send and
+    // the .catch handler would never fire, silently losing the event.
+    try {
+      await enqueue('pending_order', {
+        orderId,
+        name,
+        email,
+        phone,
+        segment: body.segment,
+        bump1: body.bump1,
+        bump2: body.bump2,
+        funnelSlug: body.funnelSlug ?? 'ecom',
+        utm_source: body.utm_source ?? null,
+        utm_medium: body.utm_medium ?? null,
+        utm_campaign: body.utm_campaign ?? null,
+        utm_content: body.utm_content ?? null,
+        utm_term: body.utm_term ?? null,
+      });
+    } catch (e) {
+      console.warn('[edge create-order] queue failed:', (e as Error).message);
+    }
 
     res.status(200).json({
       payment_session_id: cfData.payment_session_id,
