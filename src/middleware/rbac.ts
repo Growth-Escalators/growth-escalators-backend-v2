@@ -56,7 +56,17 @@ export function requirePermission(permission: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const role = req.user?.role || 'staff';
     const allowed = PERMISSION_MAP[permission];
-    if (!allowed) { next(); return; }
+    // Fail closed: a permission name not in PERMISSION_MAP is a misconfiguration,
+    // not a public route. A typo (`'CONATCTS_VIEW'`) used to silently grant
+    // access to everyone — that's a latent auth bypass. All currently-used
+    // permission keys were audited against PERMISSION_MAP before flipping this
+    // default; new permissions must be added to the map at the same time as
+    // the route that uses them.
+    if (!allowed) {
+      console.error(`[rbac] unknown permission '${permission}' — denying. Add it to PERMISSION_MAP.`);
+      res.status(403).json({ error: 'forbidden', message: 'Permission misconfigured' });
+      return;
+    }
     if (allowed.includes(role)) {
       next();
     } else {
@@ -65,10 +75,15 @@ export function requirePermission(permission: string) {
   };
 }
 
-// Check permission from role string directly (for use in route handlers)
+// Check permission from role string directly (for use in route handlers).
+// Same fail-closed contract as requirePermission — unknown permission returns
+// false, not true.
 export function hasPermission(role: string, permission: string): boolean {
   const allowed = PERMISSION_MAP[permission];
-  if (!allowed) return true;
+  if (!allowed) {
+    console.error(`[rbac] unknown permission '${permission}' — denying.`);
+    return false;
+  }
   return allowed.includes(role);
 }
 
