@@ -2,7 +2,7 @@ import logger from '../utils/logger';
 import { Router, type Request, type Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db, pool, tenants, deals, contacts, processedEvents, events } from '../db/index';
-import { findOrCreateContact } from '../services/contactService';
+import { findOrCreateContact, normalizeChannelValue } from '../services/contactService';
 import { getFunnelConfig, stageForAmount, labelForStage } from '../services/funnelConfigService';
 import { processCashfreeEvent, type CashfreeWebhookBody } from '../services/cashfreeEventProcessor';
 
@@ -65,13 +65,15 @@ router.post('/create-order', async (req: Request, res: Response) => {
 
     const cfData = await cfRes.json() as { payment_session_id: string };
 
-    // Fire-and-forget: create pending contact
+    // Fire-and-forget: create pending contact. Channel values are normalized
+    // explicitly here AND inside findOrCreateContact as defense-in-depth — the
+    // contact-dedup invariant in CLAUDE.md depends on this.
     db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, 'growth-escalators')).limit(1)
       .then(([tenant]) => {
         if (!tenant) return;
         const channels: { channelType: 'email' | 'whatsapp'; channelValue: string; isPrimary?: boolean }[] = [];
-        if (email) channels.push({ channelType: 'email', channelValue: email, isPrimary: true });
-        if (phone) channels.push({ channelType: 'whatsapp', channelValue: `91${phone}` });
+        if (email) channels.push({ channelType: 'email', channelValue: normalizeChannelValue('email', email), isPrimary: true });
+        if (phone) channels.push({ channelType: 'whatsapp', channelValue: normalizeChannelValue('whatsapp', phone) });
         const parts = name.trim().split(' ');
         return findOrCreateContact(tenant.id, {
           firstName: parts[0] ?? name,
