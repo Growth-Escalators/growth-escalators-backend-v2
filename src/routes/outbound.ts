@@ -23,13 +23,14 @@ const router = Router();
 
 // ---------------------------------------------------------------------------
 // Constants — keep in sync with CHECK constraints in migration 0017
+// (exported so tests can assert the canonical lists)
 // ---------------------------------------------------------------------------
-const ICP_SEGMENTS = ['dev_saas', 'dev_agency', 'marketing_d2c', 'marketing_agency'] as const;
-const STATUSES = [
+export const ICP_SEGMENTS = ['dev_saas', 'dev_agency', 'marketing_d2c', 'marketing_agency'] as const;
+export const STATUSES = [
   'new', 'contacted', 'accepted', 'replied', 'meeting', 'pilot', 'client', 'recycled', 'suppressed',
 ] as const;
-type IcpSegment = typeof ICP_SEGMENTS[number];
-type ProspectStatus = typeof STATUSES[number];
+export type IcpSegment = typeof ICP_SEGMENTS[number];
+export type ProspectStatus = typeof STATUSES[number];
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -41,7 +42,7 @@ const upload = multer({
 // Small inline implementation to avoid pulling in a new dependency. Returns
 // rows as arrays of strings; caller maps to headers.
 // ---------------------------------------------------------------------------
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
@@ -71,9 +72,9 @@ function parseCsv(text: string): string[][] {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers (exported for unit tests)
 // ---------------------------------------------------------------------------
-function normaliseHeader(h: string): string {
+export function normaliseHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
 }
 
@@ -83,21 +84,21 @@ function s(v: string | undefined): string | null {
   return t.length === 0 ? null : t;
 }
 
-function normaliseEmail(v: string | undefined): string | null {
+export function normaliseEmail(v: string | undefined): string | null {
   const t = s(v);
   return t == null ? null : t.toLowerCase();
 }
 
-function isValidIcpSegment(v: string | null): v is IcpSegment {
+export function isValidIcpSegment(v: string | null): v is IcpSegment {
   return v != null && (ICP_SEGMENTS as readonly string[]).includes(v);
 }
 
-function isValidStatus(v: string | null): v is ProspectStatus {
+export function isValidStatus(v: string | null): v is ProspectStatus {
   return v != null && (STATUSES as readonly string[]).includes(v);
 }
 
 // Header aliases for forgiving CSV column names. Map of canonical → accepted.
-const HEADER_ALIASES: Record<string, string[]> = {
+export const HEADER_ALIASES: Record<string, string[]> = {
   first_name:   ['first_name', 'firstname', 'first', 'given_name'],
   last_name:    ['last_name', 'lastname', 'last', 'family_name', 'surname'],
   title:        ['title', 'job_title', 'position', 'role'],
@@ -111,7 +112,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
   source:       ['source', 'lead_source', 'origin'],
 };
 
-function mapHeaderIndices(headerRow: string[]): Record<string, number> {
+export function mapHeaderIndices(headerRow: string[]): Record<string, number> {
   const idx: Record<string, number> = {};
   const norm = headerRow.map(normaliseHeader);
   for (const [canonical, aliases] of Object.entries(HEADER_ALIASES)) {
