@@ -21,7 +21,10 @@ export interface AccountInsights {
   yesterday: PeriodData | null;
   last7days: PeriodData | null;
   thisMonth: PeriodData | null;
-  bestCampaign: { name: string; roas: number } | null;
+  // spend included so the report can suppress the line when the top campaign
+  // had negligible spend (which makes ROAS = revenue/spend produce nonsense
+  // numbers like 244,200x with ₹0.01 of actual spend).
+  bestCampaign: { name: string; roas: number; spend: number } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,9 +44,15 @@ function parsePeriod(data: Record<string, unknown>, exchangeRate: number): Perio
   const actions = (data.actions as Array<{ action_type: string; value: string }>) ?? [];
   const actionValues = (data.action_values as Array<{ action_type: string; value: string }>) ?? [];
 
-  const purchases = actions.filter(a => a.action_type === 'purchase' || a.action_type === 'omni_purchase')
+  // Use the same action type as the CRM's parseInsightRow in routes/ads.ts so
+  // both surfaces report identical purchase counts. Previously this counted
+  // `purchase + omni_purchase` (broader, includes CAPI + shop conversions)
+  // which made Slack show ~2x what the CRM showed. Pixel-only is the
+  // canonical metric the team trusts.
+  const PURCHASE_ACTION = 'offsite_conversion.fb_pixel_purchase';
+  const purchases = actions.filter(a => a.action_type === PURCHASE_ACTION)
     .reduce((s, a) => s + parseFloat(a.value ?? '0'), 0);
-  const revenue = actionValues.filter(a => a.action_type === 'purchase' || a.action_type === 'omni_purchase')
+  const revenue = actionValues.filter(a => a.action_type === PURCHASE_ACTION)
     .reduce((s, a) => s + parseFloat(a.value ?? '0'), 0) * exchangeRate;
 
   const roas = spend > 0 ? revenue / spend : 0;
@@ -90,21 +99,28 @@ export async function fetchAccountInsights(
     fetchPeriod('this_month'),
   ]);
 
-  // Best campaign
-  let bestCampaign: { name: string; roas: number } | null = null;
+  // Best campaign — fetch top 5 by ROAS, then filter out any with negligible
+  // spend so we don't surface a misleading "Best: X — 488,400.00x ROAS" when
+  // the underlying spend was ₹0.01. Needs ≥ META_BEST_CAMPAIGN_MIN_SPEND
+  // (default ₹100) of spend to qualify.
+  let bestCampaign: { name: string; roas: number; spend: number } | null = null;
   try {
-    const campUrl = `${base}?fields=campaign_name,spend,purchase_roas&date_preset=yesterday&level=campaign&sort=purchase_roas_descending&limit=1&access_token=${accessToken}`;
+    const campUrl = `${base}?fields=campaign_name,spend,purchase_roas&date_preset=yesterday&level=campaign&sort=purchase_roas_descending&limit=5&access_token=${accessToken}`;
     const campRes = await fetch(campUrl, { signal: AbortSignal.timeout(10000) });
     if (campRes.ok) {
       const campData = await campRes.json() as { data?: Array<Record<string, unknown>> };
-      if (campData.data && campData.data.length > 0) {
-        const c = campData.data[0];
-        const roasArr = c.purchase_roas as Array<{ value: string }> | undefined;
-        bestCampaign = {
-          name: String(c.campaign_name ?? 'Unknown'),
-          roas: roasArr?.[0] ? parseFloat(roasArr[0].value) : 0,
-        };
-      }
+      const minSpend = Number(process.env.META_BEST_CAMPAIGN_MIN_SPEND ?? '100');
+      const candidates = (campData.data ?? [])
+        .map((c) => {
+          const roasArr = c.purchase_roas as Array<{ value: string }> | undefined;
+          return {
+            name:  String(c.campaign_name ?? 'Unknown'),
+            roas:  roasArr?.[0] ? parseFloat(roasArr[0].value) : 0,
+            spend: parseFloat(String(c.spend ?? 0)) * rate,
+          };
+        })
+        .filter((c) => c.spend >= minSpend);
+      bestCampaign = candidates[0] ?? null;
     }
   } catch { /* non-critical */ }
 
@@ -114,13 +130,45 @@ export async function fetchAccountInsights(
 // ---------------------------------------------------------------------------
 // Build formatted Slack report
 // ---------------------------------------------------------------------------
-// Spend threshold above which a low ROAS account gets a ⚠️ flag in the
-// daily report. Tuned for the typical D2C ad-spend ranges we manage; raise
-// via env if the team is consistently scaling above this and the flag
-// becomes noise.
-const LOW_ROAS_FLAG_SPEND_THRESHOLD = Number(process.env.META_REPORT_LOW_ROAS_SPEND_THRESHOLD ?? '10000');
-const LOW_ROAS_FLAG_ROAS_THRESHOLD = Number(process.env.META_REPORT_LOW_ROAS_THRESHOLD ?? '1');
+// Spend below which a period's ROAS is suppressed in the Slack output —
+// avoids printing "488,400.00x ROAS" when actual spend was ₹0.01 (Meta
+// attribution window: revenue from older clicks landing yesterday with no
+// new spend that day). Math is correct, display is meaningless.
+const ROAS_MIN_SPEND_FOR_DISPLAY = Number(process.env.META_REPORT_ROAS_MIN_SPEND ?? '100');
 
+function roasOrDash(p: PeriodData | null): string {
+  if (!p) return '—';
+  if (p.spend < ROAS_MIN_SPEND_FOR_DISPLAY) return '—';
+  return formatROAS(p.roas);
+}
+
+// Per-account Slack message block — one of these per active account. Matches
+// the template the team asked for: no top-line summary, no spend-share
+// badges, no warning flags, just clean per-account numbers.
+export function buildAccountReport(a: AccountInsights): string {
+  const y = a.yesterday;
+  const w = a.last7days;
+  const m = a.thisMonth;
+
+  let msg = `👜 *${a.clientName}*\n`;
+  msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `💰 Spend: ${y ? formatINR(y.spend) : '—'} (yday) | ${w ? formatINR(w.spend) : '—'} (7d) | ${m ? formatINR(m.spend) : '—'} (month)\n`;
+  msg += `🛒 Purchases: ${y?.purchases ?? '—'} | ${w?.purchases ?? '—'} | ${m?.purchases ?? '—'}\n`;
+  msg += `📈 ROAS: ${roasOrDash(y)} | ${roasOrDash(w)} | ${roasOrDash(m)}\n`;
+  msg += `💵 Revenue: ${y ? formatINR(y.revenue) : '—'} | ${w ? formatINR(w.revenue) : '—'} | ${m ? formatINR(m.revenue) : '—'}\n`;
+
+  if (a.bestCampaign && a.bestCampaign.spend >= ROAS_MIN_SPEND_FOR_DISPLAY) {
+    msg += `🔥 Best yesterday: ${a.bestCampaign.name} — ${formatROAS(a.bestCampaign.roas)} ROAS\n`;
+  }
+  return msg;
+}
+
+export function sortAccountsForReport(accounts: AccountInsights[]): AccountInsights[] {
+  return [...accounts].sort((a, b) => (b.yesterday?.spend ?? 0) - (a.yesterday?.spend ?? 0));
+}
+
+// Legacy combined-message report — kept for any other consumer. The 9:30 AM
+// cron now sends per-account messages via buildAccountReport().
 export function buildDailyReport(accounts: AccountInsights[]): string {
   const dateStr = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
   let msg = `📊 *Meta Ads Daily Report — ${dateStr}*\n\n`;
@@ -148,37 +196,8 @@ export function buildDailyReport(accounts: AccountInsights[]): string {
   msg += `*Yesterday across ${accountsWithYData} ${accountsWithYData === 1 ? 'account' : 'accounts'}:*\n`;
   msg += `💰 ${formatINR(yTotal.spend)} spend · 🛒 ${yTotal.purchases.toFixed(0)} purchases · 💵 ${formatINR(yTotal.revenue)} revenue · 📈 ${formatROAS(yTotalRoas)} blended ROAS\n\n`;
 
-  // Sort: highest spend first so the most impactful accounts surface at the top
-  const sorted = [...activeAccounts].sort((a, b) => (b.yesterday?.spend ?? 0) - (a.yesterday?.spend ?? 0));
-
-  for (const a of sorted) {
-    const y = a.yesterday;
-    const w = a.last7days;
-    const m = a.thisMonth;
-
-    // Spend-share badge: what % of yesterday's TOTAL spend came from this
-    // account. Helps the team see which accounts are pulling the most weight.
-    const spendShare = (y && yTotal.spend > 0) ? Math.round((y.spend / yTotal.spend) * 100) : 0;
-    const shareBadge = (y && y.spend > 0) ? ` _(${spendShare}% of yday spend)_` : '';
-
-    // High-spend / low-ROAS warning. Skip the flag entirely when yesterday
-    // had zero spend (no signal to act on yet).
-    const flag = (y && y.spend >= LOW_ROAS_FLAG_SPEND_THRESHOLD && y.roas < LOW_ROAS_FLAG_ROAS_THRESHOLD)
-      ? ' ⚠️ *low ROAS at scale*'
-      : '';
-
-    msg += `👜 *${a.clientName}*${shareBadge}${flag}\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-
-    msg += `💰 Spend: ${y ? formatINR(y.spend) : '—'} (yday) | ${w ? formatINR(w.spend) : '—'} (7d) | ${m ? formatINR(m.spend) : '—'} (month)\n`;
-    msg += `🛒 Purchases: ${y?.purchases ?? '—'} | ${w?.purchases ?? '—'} | ${m?.purchases ?? '—'}\n`;
-    msg += `📈 ROAS: ${y ? formatROAS(y.roas) : '—'} | ${w ? formatROAS(w.roas) : '—'} | ${m ? formatROAS(m.roas) : '—'}\n`;
-    msg += `💵 Revenue: ${y ? formatINR(y.revenue) : '—'} | ${w ? formatINR(w.revenue) : '—'} | ${m ? formatINR(m.revenue) : '—'}\n`;
-
-    if (a.bestCampaign && a.bestCampaign.roas > 0) {
-      msg += `🔥 Best yesterday: ${a.bestCampaign.name} — ${formatROAS(a.bestCampaign.roas)} ROAS\n`;
-    }
-    msg += '\n';
+  for (const a of sortAccountsForReport(activeAccounts)) {
+    msg += buildAccountReport(a) + '\n';
   }
 
   msg += `_Powered by Growth Escalators · ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
