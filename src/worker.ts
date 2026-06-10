@@ -411,17 +411,19 @@ console.log('[cron] Growth OS health scores scheduled — daily 8:00 AM IST');
 import('./services/metaAdsService').then(m => m.ensureAdAccountsTable()).catch(() => {});
 cron.schedule('0 4 * * 1-6', () => safeCron('Meta Ads Daily Report', async () => {
   const { sendSlackMessage } = await import('./services/slackService');
-  const { fetchAccountInsights, buildDailyReport } = await import('./services/metaAdsService');
+  const { fetchAccountInsights, buildAccountReport, sortAccountsForReport } = await import('./services/metaAdsService');
 
   const token = process.env.META_ADS_TOKEN || process.env.META_ACCESS_TOKEN;
   if (!token) {
-    await sendSlackMessage(SLACK_PERF_MARKETING_CHANNEL, '📊 *Meta Ads Daily Report*\n\n⚠️ META_ADS_TOKEN not configured — cannot fetch data.');
+    await sendSlackMessage(SLACK_PERF_MARKETING_CHANNEL, '📊 *Meta Ads Daily Report*\n\n⚠️ META_ADS_TOKEN not configured — cannot fetch data.', undefined, { allowDuringPause: true });
     return;
   }
 
+  // Active accounts only — paused (is_active=false) rows stay in the table
+  // but skip the report. Controlled via the new Slack-Daily-Report tab on
+  // the /ads page (managed-accounts CRUD endpoints in routes/ads.ts).
   const accounts = await pool.query(`SELECT account_id, client_name, currency, exchange_rate FROM ad_accounts WHERE is_active = true`);
   if (accounts.rows.length === 0) {
-    // Fallback: use growth_os_clients if no ad_accounts configured
     const clients = await pool.query(`SELECT ad_account_id AS account_id, client_name FROM growth_os_clients WHERE is_active = true`);
     if (clients.rows.length === 0) { console.log('[CRON] Meta Ads: no active accounts'); return; }
     for (const c of clients.rows as Array<{ account_id: string; client_name: string }>) {
@@ -435,9 +437,18 @@ cron.schedule('0 4 * * 1-6', () => safeCron('Meta Ads Daily Report', async () =>
     insights.push(data);
   }
 
-  const report = buildDailyReport(insights);
-  await sendSlackMessage(SLACK_PERF_MARKETING_CHANNEL, report);
-  console.log('[CRON] Meta Ads report sent');
+  // ONE Slack message per active account, sorted highest-yesterday-spend
+  // first so the most impactful accounts surface at the top of the channel
+  // timeline. Small inter-message gap keeps order in Slack and stays well
+  // under the post-rate ceiling.
+  let sent = 0;
+  for (const a of sortAccountsForReport(insights)) {
+    const ok = await sendSlackMessage(SLACK_PERF_MARKETING_CHANNEL, buildAccountReport(a), undefined, { allowDuringPause: true })
+      .catch((e) => { console.error('[CRON] Meta Ads post failed for', a.clientName, e); return false; });
+    if (ok) sent++;
+    await new Promise(r => setTimeout(r, 800));
+  }
+  console.log(`[CRON] Meta Ads report sent: ${sent}/${insights.length} accounts`);
 }), { timezone: 'UTC' });
 console.log('[cron] Meta Ads daily report scheduled — 9:30 AM IST Mon-Sat');
 
