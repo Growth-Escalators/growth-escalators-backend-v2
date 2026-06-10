@@ -12,6 +12,7 @@ import { startEdgeQueueDrainer, stopEdgeQueueDrainer } from './services/edgeQueu
 import { checkAndAlertBlockers } from './services/blockerAlertService';
 import { generateMonthlyDraftInvoices } from './services/recurringInvoiceService';
 import { sendSODDigest, sendEODSummary, sendSakhamSOD } from './services/sodEodService';
+import { sendTeamSODPrompt, sendTeamEODPrompt, sendSocialMediaPrompt } from './services/dailyPromptsService';
 import { placePipelineContact } from './services/pipelineService';
 import { checkSpendAlerts } from './services/spendAlertService';
 import { collectDailyData } from './services/intelligenceDataCollector';
@@ -200,6 +201,24 @@ cron.schedule('45 13 * * 1-6', () => safeCron('Evening Summary', async () => {
   console.log(`[CRON] Evening Summary: ${result.sent} sent, ${result.errors.length} errors`);
 }), { timezone: 'UTC' });
 console.log('[cron] evening summary scheduled — 7:15 PM IST Mon-Sat');
+
+// Team channel prompts — lightweight "drop yours" cues in real Slack
+// channels so the team sees the rhythm even when personalised digests are
+// paused. Three crons; all Mon–Sat; UTC because that's the existing
+// convention in this file (cron-utils helper added IST offset comments).
+
+// SOD prompt — 10:15 AM IST (04:45 UTC) in #sod-eod, tags Kanishk/Kratika/Sneha
+cron.schedule('45 4 * * 1-6', () => safeCron('Team SOD Prompt', sendTeamSODPrompt), { timezone: 'UTC' });
+console.log('[cron] team SOD prompt scheduled — 10:15 AM IST Mon-Sat');
+
+// EOD prompt — 7:00 PM IST (13:30 UTC) in #sod-eod, tags Kanishk/Kratika/Sneha
+cron.schedule('30 13 * * 1-6', () => safeCron('Team EOD Prompt', sendTeamEODPrompt), { timezone: 'UTC' });
+console.log('[cron] team EOD prompt scheduled — 7:00 PM IST Mon-Sat');
+
+// Social media posting prompt — 9:30 AM IST (04:00 UTC) in #social-media-posting,
+// tags Kratika & Sneha so they list which brands need posting today.
+cron.schedule('0 4 * * 1-6', () => safeCron('Social Media Prompt', sendSocialMediaPrompt), { timezone: 'UTC' });
+console.log('[cron] social media prompt scheduled — 9:30 AM IST Mon-Sat');
 
 // Spend alert check — DISABLED (folded into Morning Briefing)
 // cron.schedule('0 * * * *', () => safeCron('Spend Alert Check', checkSpendAlerts), { timezone: 'UTC' });

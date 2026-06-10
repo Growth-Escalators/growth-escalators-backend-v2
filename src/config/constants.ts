@@ -9,11 +9,15 @@ export const SLACK_SALES_BD_CHANNEL = process.env.SLACK_SALES_BD_CHANNEL ?? 'C0A
 export const SLACK_PERF_MARKETING_CHANNEL = process.env.SLACK_PERF_MARKETING_CHANNEL ?? 'C0ALLQG0SUS';
 export const SLACK_SEO_CHANNEL = process.env.SLACK_SEO_CHANNEL ?? 'C09TUDJPS2X';
 export const SLACK_OUTREACH_CHANNEL = process.env.SLACK_OUTREACH_CHANNEL ?? 'C0AMPEF302G'; // defaults to #sales-bd until dedicated #outreach channel is created
+export const SLACK_SOCIAL_MEDIA_CHANNEL = process.env.SLACK_SOCIAL_MEDIA_CHANNEL ?? 'C0BA1F33BL0';
 
 // -- Slack User IDs ----------------------------------------------------------
 export const SLACK_JATIN = process.env.SLACK_JATIN ?? 'U073Y677JBB';
 export const SLACK_SAKCHAM = process.env.SLACK_SAKCHAM ?? 'U09TY8RGN30';
 export const SLACK_KESHAV = process.env.SLACK_KESHAV ?? 'U073Y6S4K4H';
+export const SLACK_KANISHK = process.env.SLACK_KANISHK ?? 'U0B9APK7C76';
+export const SLACK_KRATIKA = process.env.SLACK_KRATIKA ?? 'U0B9Q27QKD';
+export const SLACK_SNEHA = process.env.SLACK_SNEHA ?? 'U0BA1DYGD6U';
 
 // -- Meta Graph API ----------------------------------------------------------
 export const META_API_BASE = process.env.META_API_BASE ?? 'https://graph.facebook.com/v19.0';

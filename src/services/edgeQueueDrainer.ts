@@ -30,7 +30,7 @@ import {
   recordPendingOrder,
   type CashfreeWebhookBody,
 } from './cashfreeEventProcessor';
-import { DEFAULT_TENANT_SLUG } from '../config/constants';
+import { DEFAULT_TENANT_SLUG, SLACK_SALES_BD_CHANNEL } from '../config/constants';
 import {
   getUpstashClient,
   QUEUE_STREAM,
@@ -237,7 +237,7 @@ async function dispatch(event: QueueEvent): Promise<void> {
       }).where(eq(contacts.id, contact.id));
 
       if (event.type === 'agency_lead') {
-        sendSlackMessage(process.env.SLACK_SOD_EOD_CHANNEL || 'C08EMRX2HHN',
+        sendSlackMessage(process.env.SLACK_SALES_BD_CHANNEL || SLACK_SALES_BD_CHANNEL,
           `🤝 *New Agency Lead* (via edge)\n• Name: ${p.name}\n• Agency: ${p.agencyName || 'N/A'}\n• Email: ${p.email}\n• Phone: ${p.phone || 'N/A'}\n• Ad-spend: ${p.adSpend || 'N/A'}\n• Status: ${created ? 'NEW' : 'EXISTING'}`,
         ).catch(() => {});
       }

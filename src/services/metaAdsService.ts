@@ -114,6 +114,13 @@ export async function fetchAccountInsights(
 // ---------------------------------------------------------------------------
 // Build formatted Slack report
 // ---------------------------------------------------------------------------
+// Spend threshold above which a low ROAS account gets a ⚠️ flag in the
+// daily report. Tuned for the typical D2C ad-spend ranges we manage; raise
+// via env if the team is consistently scaling above this and the flag
+// becomes noise.
+const LOW_ROAS_FLAG_SPEND_THRESHOLD = Number(process.env.META_REPORT_LOW_ROAS_SPEND_THRESHOLD ?? '10000');
+const LOW_ROAS_FLAG_ROAS_THRESHOLD = Number(process.env.META_REPORT_LOW_ROAS_THRESHOLD ?? '1');
+
 export function buildDailyReport(accounts: AccountInsights[]): string {
   const dateStr = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
   let msg = `📊 *Meta Ads Daily Report — ${dateStr}*\n\n`;
@@ -125,13 +132,43 @@ export function buildDailyReport(accounts: AccountInsights[]): string {
     return msg;
   }
 
-  for (const a of activeAccounts) {
-    msg += `👜 *${a.clientName}*\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  // ── Top-line summary across all active accounts (yesterday) ──────────────
+  // Gives the team a one-glance "how did we do yesterday in aggregate" before
+  // they read the per-account breakdown.
+  const yTotal = activeAccounts.reduce((acc, a) => {
+    if (!a.yesterday) return acc;
+    acc.spend     += a.yesterday.spend;
+    acc.purchases += a.yesterday.purchases;
+    acc.revenue   += a.yesterday.revenue;
+    return acc;
+  }, { spend: 0, purchases: 0, revenue: 0 });
+  const yTotalRoas = yTotal.spend > 0 ? yTotal.revenue / yTotal.spend : 0;
+  const accountsWithYData = activeAccounts.filter(a => a.yesterday).length;
 
+  msg += `*Yesterday across ${accountsWithYData} ${accountsWithYData === 1 ? 'account' : 'accounts'}:*\n`;
+  msg += `💰 ${formatINR(yTotal.spend)} spend · 🛒 ${yTotal.purchases.toFixed(0)} purchases · 💵 ${formatINR(yTotal.revenue)} revenue · 📈 ${formatROAS(yTotalRoas)} blended ROAS\n\n`;
+
+  // Sort: highest spend first so the most impactful accounts surface at the top
+  const sorted = [...activeAccounts].sort((a, b) => (b.yesterday?.spend ?? 0) - (a.yesterday?.spend ?? 0));
+
+  for (const a of sorted) {
     const y = a.yesterday;
     const w = a.last7days;
     const m = a.thisMonth;
+
+    // Spend-share badge: what % of yesterday's TOTAL spend came from this
+    // account. Helps the team see which accounts are pulling the most weight.
+    const spendShare = (y && yTotal.spend > 0) ? Math.round((y.spend / yTotal.spend) * 100) : 0;
+    const shareBadge = (y && y.spend > 0) ? ` _(${spendShare}% of yday spend)_` : '';
+
+    // High-spend / low-ROAS warning. Skip the flag entirely when yesterday
+    // had zero spend (no signal to act on yet).
+    const flag = (y && y.spend >= LOW_ROAS_FLAG_SPEND_THRESHOLD && y.roas < LOW_ROAS_FLAG_ROAS_THRESHOLD)
+      ? ' ⚠️ *low ROAS at scale*'
+      : '';
+
+    msg += `👜 *${a.clientName}*${shareBadge}${flag}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 
     msg += `💰 Spend: ${y ? formatINR(y.spend) : '—'} (yday) | ${w ? formatINR(w.spend) : '—'} (7d) | ${m ? formatINR(m.spend) : '—'} (month)\n`;
     msg += `🛒 Purchases: ${y?.purchases ?? '—'} | ${w?.purchases ?? '—'} | ${m?.purchases ?? '—'}\n`;
@@ -174,8 +211,9 @@ export async function ensureAdAccountsTable(): Promise<void> {
 
   // Seed known accounts — safe to run multiple times (ON CONFLICT is idempotent)
   const seedAccounts = [
-    { id: 'act_689363376592426', client: 'Paraiso',   name: 'Paraiso - Meta Ads',  currency: 'INR' },
-    { id: 'act_323237510625803', client: 'GE Agency', name: 'GE Agency - Meta Ads', currency: 'INR' },
+    { id: 'act_689363376592426',  client: 'Paraiso',   name: 'Paraiso - Meta Ads',  currency: 'INR' },
+    { id: 'act_1428140022075180', client: 'Odra',      name: 'Odra Organics - Meta Ads', currency: 'INR' },
+    { id: 'act_323237510625803',  client: 'GE Agency', name: 'GE Agency - Meta Ads', currency: 'INR' },
   ];
   for (const a of seedAccounts) {
     await pool.query(

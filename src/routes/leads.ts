@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, contacts, tenants } from '../db/index';
 import { findOrCreateContact } from '../services/contactService';
 import { sendSlackMessage } from '../services/slackService';
-import { DEFAULT_TENANT_SLUG } from '../config/constants';
+import { DEFAULT_TENANT_SLUG, SLACK_SALES_BD_CHANNEL } from '../config/constants';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -68,8 +68,9 @@ router.post('/agency', async (req: Request, res: Response): Promise<void> => {
       lastActivityAt: now,
     }).where(eq(contacts.id, contact.id));
 
-    // Slack ping (fire-and-forget — never block the response)
-    const slackChannel = process.env.SLACK_SOD_EOD_CHANNEL || 'C08EMRX2HHN';
+    // Slack ping (fire-and-forget — never block the response). Routed to
+    // #sales-bd so the BD team owns follow-up.
+    const slackChannel = process.env.SLACK_SALES_BD_CHANNEL || SLACK_SALES_BD_CHANNEL;
     sendSlackMessage(slackChannel,
       `🤝 *New Agency Lead*\n` +
       `• Name: ${name}\n` +
