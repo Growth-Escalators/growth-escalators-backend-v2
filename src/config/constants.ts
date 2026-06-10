@@ -16,7 +16,7 @@ export const SLACK_JATIN = process.env.SLACK_JATIN ?? 'U073Y677JBB';
 export const SLACK_SAKCHAM = process.env.SLACK_SAKCHAM ?? 'U09TY8RGN30';
 export const SLACK_KESHAV = process.env.SLACK_KESHAV ?? 'U073Y6S4K4H';
 export const SLACK_KANISHK = process.env.SLACK_KANISHK ?? 'U0B9APK7C76';
-export const SLACK_KRATIKA = process.env.SLACK_KRATIKA ?? 'U0B9Q27QKD';
+export const SLACK_KRATIKA = process.env.SLACK_KRATIKA ?? 'U0B90Q27QKD';
 export const SLACK_SNEHA = process.env.SLACK_SNEHA ?? 'U0BA1DYGD6U';
 
 // -- Meta Graph API ----------------------------------------------------------
