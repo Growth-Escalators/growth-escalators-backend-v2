@@ -8,16 +8,7 @@
           "nixPkgs": ["nodejs_20", "npm-9_x", "openssl"]
         },
         "install": {
-          "cmds": [
-            "npm install --legacy-peer-deps",
-            "npm install --legacy-peer-deps --prefix admin"
-          ]
-        },
-        "build": {
-          "cmds": [
-            "npm run admin:build",
-            "npm run build"
-          ]
+          "cmds": ["npm install --legacy-peer-deps"]
         }
       }
     }
