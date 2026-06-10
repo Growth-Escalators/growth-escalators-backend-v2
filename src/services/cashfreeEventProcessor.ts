@@ -4,6 +4,7 @@ import { findOrCreateContact, normalizeChannelValue } from './contactService';
 import { sendPurchaseEvent } from './metaCapi';
 import { sendSlackMessage } from './slackService';
 import { getFunnelConfig, stageForAmount, labelForStage, renderTemplate } from './funnelConfigService';
+import { SLACK_SALES_BD_CHANNEL } from '../config/constants';
 import logger from '../utils/logger';
 
 // Shape of the Cashfree webhook body we care about.
@@ -243,7 +244,11 @@ export async function processCashfreeEvent(
 
   const slackEmoji = funnelConfig?.slack_emoji || '💰';
   const slackLabel = funnelConfig?.slack_label || 'New Purchase';
-  const slackChannel = funnelConfig?.slack_channel || process.env.SLACK_SOD_EOD_CHANNEL || 'C08EMRX2HHN';
+  // Default funnel-purchase routing → #sales-bd so the BD team sees revenue
+  // events alongside agency-lead notifications. Per-funnel overrides via
+  // funnel_configs.slack_channel still take precedence (e.g. partner-funnel
+  // sales can route to a partner-specific channel).
+  const slackChannel = funnelConfig?.slack_channel || process.env.SLACK_SALES_BD_CHANNEL || SLACK_SALES_BD_CHANNEL;
 
   // Resolve human-friendly product names from the funnel config so the alert
   // shows e.g. "D2C Funnel Breakdown Pack + Advanced D2C Growth Kit" instead
