@@ -2,7 +2,7 @@ import {
   Calendar, Home, Users, Kanban, CheckSquare, MessageSquare, TrendingUp,
   Megaphone, Share2, Target, Search, FileText, Brain, MapPin, Zap, Mail,
   Link as LinkIcon, CreditCard, Receipt, Shield, ShieldCheck, ClipboardList, Settings,
-  Briefcase,
+  Briefcase, Building2, Radar, UserCheck, Send, Globe, Gavel, BarChart3,
 } from 'lucide-react';
 
 // Permission flag bag — derived from user role + per-user permission overrides.
@@ -37,6 +37,7 @@ export function computeFlags(role, perms = {}) {
     canDiscovery:  ['admin', 'manager_ops', 'team_lead', 'sales'].includes(role),
     canMarketing:  ['admin', 'manager_ads'].includes(role),
     canSEO:        ['admin', 'manager_ops', 'manager_ads'].includes(role),
+    canWizmatch:   isAdminTier,
   };
 }
 
@@ -170,6 +171,48 @@ export const NAV_ENTRIES = [
     id: 'funnels', label: 'Funnels', to: '/funnels',
     icon: Zap, section: 'Finance', group: 'finance',
     visible: f => f.canBilling,
+  },
+
+  // ── WIZMATCH STAFFING ─────────────────────────────────────────
+  {
+    id: 'wm-signals', label: 'Job Signals', to: '/wizmatch/signals',
+    icon: Radar, section: 'Wizmatch', group: null,
+    visible: f => f.canWizmatch,
+  },
+  {
+    id: 'wm-candidates', label: 'Candidate Pool', to: '/wizmatch/candidates',
+    icon: UserCheck, section: 'Wizmatch', group: null,
+    visible: f => f.canWizmatch,
+  },
+  {
+    id: 'wm-queue', label: 'Review Queue', to: '/wizmatch/queue',
+    icon: Send, section: 'Wizmatch', group: null,
+    visible: f => f.canWizmatch,
+  },
+  {
+    id: 'wm-placements', label: 'Placements', to: '/wizmatch/placements',
+    icon: Briefcase, section: 'Wizmatch', group: null,
+    visible: f => f.canWizmatch,
+  },
+  {
+    id: 'wm-primes', label: 'Primes', to: '/wizmatch/primes',
+    icon: Building2, section: 'Wizmatch', group: null,
+    visible: f => f.canWizmatch,
+  },
+  {
+    id: 'wm-domains', label: 'Domains', to: '/wizmatch/domains',
+    icon: Globe, section: 'Wizmatch', group: null,
+    visible: f => f.canWizmatch,
+  },
+  {
+    id: 'wm-compliance', label: 'Compliance', to: '/wizmatch/compliance',
+    icon: Gavel, section: 'Wizmatch', group: null,
+    visible: f => f.canWizmatch,
+  },
+  {
+    id: 'wm-analytics', label: 'Analytics', to: '/wizmatch/analytics',
+    icon: BarChart3, section: 'Wizmatch', group: null,
+    visible: f => f.canWizmatch,
   },
 
   // ── SETTINGS (collapsible, pinned to bottom) ──────────────────

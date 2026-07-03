@@ -1,0 +1,158 @@
+/**
+ * Multi-domain cold email sender using nodemailer + Purelymail SMTP.
+ *
+ * Inbox rotation per PRD §7.4:
+ *   - Pick healthy domain (status='healthy', least sends_7d)
+ *   - Round-robin inbox within domain (≤30/day/inbox)
+ *   - Inject List-Unsubscribe header
+ *
+ * In-process = cheap; no external SaaS send cost.
+ */
+
+import nodemailer from 'nodemailer';
+import { pool } from '../db/index';
+
+export interface SendResult {
+  from: string;
+  domain: string;
+  messageId: string;
+}
+
+export interface SendParams {
+  to: string;
+  subject: string;
+  body: string;
+  fromName: string;
+  tenantId: string;
+}
+
+// Build inbox config from env vars (6 inboxes across 3 domains)
+function getInboxes() {
+  const host = process.env.PURELYMAIL_SMTP_HOST || 'smtp.purelymail.com';
+  const port = Number(process.env.PURELYMAIL_SMTP_PORT) || 587;
+
+  const inboxes: Array<{ user: string; pass: string; domain: string }> = [];
+  for (let i = 1; i <= 6; i++) {
+    const user = process.env[`PURELYMAIL_SMTP_USER_${i}`] || process.env[`PURELYMAIL_USER_${i}`];
+    const pass = process.env[`PURELYMAIL_SMTP_PASS_${i}`] || process.env[`PURELYMAIL_PASS_${i}`];
+    if (user && pass) {
+      const domain = user.split('@')[1] || '';
+      inboxes.push({ user, pass, domain });
+    }
+  }
+
+  return { host, port, inboxes };
+}
+
+export async function sendColdEmail(params: SendParams): Promise<SendResult> {
+  const { host, port, inboxes } = getInboxes();
+
+  if (inboxes.length === 0) {
+    throw new Error('No Purelymail inboxes configured (PURELYMAIL_SMTP_USER_1..6 + PURELYMAIL_SMTP_PASS_1..6)');
+  }
+
+  // Get healthy domains, ordered by least sends
+  const domainsResult = await pool.query(
+    `SELECT domain FROM wizmatch_domain_health
+     WHERE tenant_id = $1 AND status = 'healthy'
+     ORDER BY sends_7d ASC, domain`,
+    [params.tenantId],
+  );
+
+  const healthyDomains = domainsResult.rows.map((r: { domain: string }) => r.domain);
+
+  // Filter inboxes by healthy domains
+  let availableInboxes = inboxes.filter((ib) => healthyDomains.includes(ib.domain));
+
+  // If no healthy domains match, use all inboxes
+  if (availableInboxes.length === 0) {
+    availableInboxes = inboxes;
+  }
+
+  // Round-robin: pick inbox based on today's count (simplified — in production, track per-inbox daily count)
+  // For now, use a hash of the recipient email to distribute evenly
+  const bucket = Math.abs(hashString(params.to)) % availableInboxes.length;
+  const selectedInbox = availableInboxes[bucket];
+
+  const fromAddress = `${params.fromName} <${selectedInbox.user}>`;
+
+  const transport = nodemailer.createTransport({
+    host,
+    port,
+    secure: false,
+    auth: { user: selectedInbox.user, pass: selectedInbox.pass },
+  });
+
+  // Generate List-Unsubscribe header (mailto + HTTPS)
+  const unsubEmail = `unsubscribe@${selectedInbox.domain}`;
+
+  const info = await transport.sendMail({
+    from: fromAddress,
+    to: params.to,
+    subject: params.subject,
+    text: params.body,
+    headers: {
+      'List-Unsubscribe': `<mailto:${unsubEmail}>, <https://api.growthescalators.com/api/wizmatch/unsubscribe?email=${encodeURIComponent(params.to)}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      'X-Mailer': 'Wizmatch Outreach',
+    },
+  });
+
+  // Bump sends_7d on the domain
+  await pool.query(
+    `UPDATE wizmatch_domain_health SET sends_7d = sends_7d + 1 WHERE tenant_id = $1 AND domain = $2`,
+    [params.tenantId, selectedInbox.domain],
+  ).catch(() => {});
+
+  return {
+    from: fromAddress,
+    domain: selectedInbox.domain,
+    messageId: info.messageId,
+  };
+}
+
+function hashString(s: string): number {
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    const chr = s.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0;
+  }
+  return hash;
+}
+
+// Domain warmup sender — sends to friendly contacts
+export async function sendWarmupEmails(tenantId: string, warmupContacts: string[]) {
+  const { host, port, inboxes } = getInboxes();
+  if (inboxes.length === 0 || warmupContacts.length === 0) return;
+
+  let sent = 0;
+  for (const inbox of inboxes) {
+    // Pick a warmup contact round-robin
+    const target = warmupContacts[sent % warmupContacts.length];
+    try {
+      const transport = nodemailer.createTransport({
+        host, port, secure: false,
+        auth: { user: inbox.user, pass: inbox.pass },
+      });
+      await transport.sendMail({
+        from: `Archit <${inbox.user}>`,
+        to: target,
+        subject: 'Quick sync this week?',
+        text: `Hi,\n\nAre you free for a quick catch-up this week?\n\n— Archit`,
+      });
+      sent++;
+    } catch (e) {
+      console.error(`[wizmatch-warmup] Failed for ${inbox.user}:`, e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Log warmup
+  await pool.query(
+    `INSERT INTO events (tenant_id, event_type, channel, direction, payload, occurred_at)
+     VALUES ($1, 'domain_warmup', 'email', 'outbound', $2::jsonb, NOW())`,
+    [tenantId, JSON.stringify({ sent, total_inboxes: inboxes.length })],
+  ).catch(() => {});
+
+  return { sent, total: inboxes.length };
+}

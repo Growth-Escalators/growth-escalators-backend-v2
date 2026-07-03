@@ -82,4 +82,16 @@ export {
   adsInsightsCache,
   auditEvents,
   passwordResetTokens,
+  // Outbound tables (previously missing from re-exports)
+  prospects,
+  signals,
+  replies,
+  outboundEvents,
+  // Wizmatch staffing module tables
+  wizmatchCompanies,
+  wizmatchJobSignals,
+  wizmatchCandidates,
+  wizmatchPlacements,
+  wizmatchDomainHealth,
+  wizmatchSuppressionList,
 } from './schema';
