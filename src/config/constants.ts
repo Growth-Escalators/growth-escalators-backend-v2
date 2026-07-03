@@ -35,3 +35,12 @@ export const CRITICAL_THRESHOLD_DAYS = Number(process.env.CRITICAL_THRESHOLD_DAY
 
 // -- Tenant Slug (for single-tenant queries) ---------------------------------
 export const DEFAULT_TENANT_SLUG = process.env.DEFAULT_TENANT_SLUG ?? 'growth-escalators';
+
+// -- Wizmatch Staffing Module ------------------------------------------------
+export const WIZMATCH_TENANT_ID = process.env.WIZMATCH_TENANT_ID ?? '';
+export const WIZMATCH_LEADS_CHANNEL = process.env.WIZMATCH_LEADS_CHANNEL ?? '';
+export const WIZMATCH_DAILY_CHANNEL = process.env.WIZMATCH_DAILY_CHANNEL ?? '';
+export const WIZMATCH_SYSTEM_CHANNEL = process.env.WIZMATCH_SYSTEM_CHANNEL ?? '';
+export const WIZMATCH_PHYSICAL_ADDRESS = process.env.WIZMATCH_PHYSICAL_ADDRESS ?? 'Wizmatch LLC, Newark, DE, USA';
+export const WIZMATCH_UNSUBSCRIBE_HMAC_SECRET = process.env.WIZMATCH_UNSUBSCRIBE_HMAC_SECRET ?? '';
+export const WIZMATCH_MEETING_URL = process.env.WIZMATCH_MEETING_URL ?? 'https://cal.com/wizmatch/intro';

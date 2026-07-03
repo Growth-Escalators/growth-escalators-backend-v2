@@ -1392,6 +1392,175 @@ console.log('[cron] Monthly client benchmarks scheduled — 1st of month 11:00 A
 // The standalone path bundles both into the original behavior.
 // ---------------------------------------------------------------------------
 
+// ===========================================================================
+// WIZMATCH STAFFING MODULE CRONS
+// HTTP/DB-only jobs (no browser/Python — those run in GitHub Actions)
+// ===========================================================================
+
+if (process.env.DISABLE_BACKGROUND_JOBS !== 'true' && process.env.WIZMATCH_TENANT_ID) {
+
+  // Signal scoring — every 30 minutes, cap 50/run (pure TS, $0)
+  cron.schedule('*/30 * * * *', () => safeCron('Wizmatch Signal Scoring', async () => {
+    const tenantId = process.env.WIZMATCH_TENANT_ID!;
+    const signals = await pool.query(
+      `SELECT id FROM wizmatch_job_signals WHERE tenant_id = $1 AND status = 'new' LIMIT 50`,
+      [tenantId],
+    );
+    const token = process.env.WIZMATCH_INTERNAL_TOKEN || process.env.OUTREACH_INTERNAL_SECRET;
+    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${process.env.PORT || 3000}`;
+    for (const s of signals.rows) {
+      try {
+        await fetch(`${baseUrl}/api/wizmatch/signals/${s.id}/score`, {
+          method: 'POST',
+          headers: { 'x-internal-secret': token! },
+        });
+      } catch (e) { console.error('[CRON] wizmatch score failed for', s.id, e); }
+    }
+    if (signals.rows.length > 0) console.log(`[CRON] Wizmatch: scored ${signals.rows.length} signals`);
+  }), { timezone: 'UTC' });
+  console.log('[cron] Wizmatch signal scoring scheduled — every 30 minutes');
+
+  // Enrichment — every hour, cap 20/run
+  cron.schedule('0 * * * *', () => safeCron('Wizmatch Enrichment', async () => {
+    const tenantId = process.env.WIZMATCH_TENANT_ID!;
+    const signals = await pool.query(
+      `SELECT id FROM wizmatch_job_signals WHERE tenant_id = $1 AND score >= 7 AND contact_id IS NULL AND status = 'scored' LIMIT 20`,
+      [tenantId],
+    );
+    const token = process.env.WIZMATCH_INTERNAL_TOKEN || process.env.OUTREACH_INTERNAL_SECRET;
+    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${process.env.PORT || 3000}`;
+    for (const s of signals.rows) {
+      try {
+        await fetch(`${baseUrl}/api/wizmatch/signals/${s.id}/enrich`, {
+          method: 'POST',
+          headers: { 'x-internal-secret': token! },
+        });
+      } catch (e) { console.error('[CRON] wizmatch enrich failed for', s.id, e); }
+    }
+    if (signals.rows.length > 0) console.log(`[CRON] Wizmatch: enriched ${signals.rows.length} signals`);
+  }), { timezone: 'UTC' });
+  console.log('[cron] Wizmatch enrichment scheduled — every hour');
+
+  // Candidate matching — every 2 hours, cap 30/run (pure SQL+TS, $0)
+  cron.schedule('0 */2 * * *', () => safeCron('Wizmatch Matching', async () => {
+    const tenantId = process.env.WIZMATCH_TENANT_ID!;
+    const signals = await pool.query(
+      `SELECT id FROM wizmatch_job_signals WHERE tenant_id = $1 AND status = 'enriched' LIMIT 30`,
+      [tenantId],
+    );
+    const token = process.env.WIZMATCH_INTERNAL_TOKEN || process.env.OUTREACH_INTERNAL_SECRET;
+    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${process.env.PORT || 3000}`;
+    for (const s of signals.rows) {
+      try {
+        await fetch(`${baseUrl}/api/wizmatch/signals/${s.id}/match`, {
+          method: 'POST',
+          headers: { 'x-internal-secret': token! },
+        });
+      } catch (e) { console.error('[CRON] wizmatch match failed for', s.id, e); }
+    }
+    if (signals.rows.length > 0) console.log(`[CRON] Wizmatch: matched ${signals.rows.length} signals`);
+  }), { timezone: 'UTC' });
+  console.log('[cron] Wizmatch matching scheduled — every 2 hours');
+
+  // Domain health monitor — every hour
+  cron.schedule('0 * * * *', () => safeCron('Wizmatch Domain Health', async () => {
+    const dns = await import('dns').then(m => m.promises);
+    const tenantId = process.env.WIZMATCH_TENANT_ID!;
+    const domains = await pool.query(
+      `SELECT id, domain FROM wizmatch_domain_health WHERE tenant_id = $1 AND status != 'paused'`,
+      [tenantId],
+    );
+    for (const d of domains.rows) {
+      try {
+        // Check SPF
+        let spfOk = false;
+        try {
+          const txt = await dns.resolveTxt(d.domain);
+          spfOk = txt.some((records: string[]) => records.join('').includes('v=spf1'));
+        } catch { /* no TXT */ }
+
+        // Check DMARC
+        let dmarcOk = false;
+        try {
+          const txt = await dns.resolveTxt(`_dmarc.${d.domain}`);
+          dmarcOk = txt.some((records: string[]) => records.join('').includes('v=DMARC1'));
+        } catch { /* no DMARC */ }
+
+        // Calculate bounce/reply rate from messages (last 7 days)
+        const stats = await pool.query(
+          `SELECT
+             COUNT(*) FILTER (WHERE channel = 'email' AND direction = 'outbound') AS sends,
+             COUNT(*) FILTER (WHERE channel = 'email' AND direction = 'inbound') AS replies
+           FROM messages WHERE tenant_id = $1 AND sent_at >= NOW() - INTERVAL '7 days'`,
+          [tenantId],
+        );
+        const sends = stats.rows[0]?.sends || 0;
+        const replies = stats.rows[0]?.replies || 0;
+        const replyRate = sends > 0 ? replies / sends : 0;
+
+        // Update domain health
+        const newStatus = replyRate < 0.03 && sends > 20 ? 'warn' : 'healthy';
+        await pool.query(
+          `UPDATE wizmatch_domain_health
+           SET last_check_at = NOW(), spf_ok = $3, dmarc_ok = $4, reply_rate_7d = $5, sends_7d = $6, status = $7
+           WHERE id = $1 AND tenant_id = $2`,
+          [d.id, tenantId, spfOk, dmarcOk, replyRate, sends, newStatus],
+        );
+      } catch (e) {
+        console.error(`[CRON] domain health check failed for ${d.domain}:`, e);
+      }
+    }
+    console.log(`[CRON] Wizmatch domain health: checked ${domains.rows.length} domains`);
+  }), { timezone: 'UTC' });
+  console.log('[cron] Wizmatch domain health scheduled — every hour');
+
+  // Domain warmup — every 6 hours
+  cron.schedule('0 */6 * * *', () => safeCron('Wizmatch Domain Warmup', async () => {
+    const tenantId = process.env.WIZMATCH_TENANT_ID!;
+    const warmupContacts = (process.env.WIZMATCH_WARMUP_CONTACTS || '').split(',').filter(Boolean);
+    if (warmupContacts.length === 0) return;
+    const { sendWarmupEmails } = await import('./services/multiDomainMailer');
+    const result = await sendWarmupEmails(tenantId, warmupContacts);
+    console.log(`[CRON] Wizmatch warmup: ${result?.sent || 0}/${result?.total || 0} sent`);
+  }), { timezone: 'UTC' });
+  console.log('[cron] Wizmatch domain warmup scheduled — every 6 hours');
+
+  // Daily digest — 6 PM IST (12:30 UTC)
+  cron.schedule('30 12 * * 1-6', () => safeCron('Wizmatch Daily Digest', async () => {
+    const { WIZMATCH_DAILY_CHANNEL } = await import('./config/constants');
+    const { sendSlackMessage } = await import('./services/slackService');
+    const tenantId = process.env.WIZMATCH_TENANT_ID!;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const stats = await pool.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM wizmatch_job_signals WHERE tenant_id = $1 AND created_at::date = $2) AS signals,
+         (SELECT COUNT(*)::int FROM wizmatch_job_signals WHERE tenant_id = $1 AND created_at::date = $2 AND score >= 7) AS priority,
+         (SELECT COUNT(*)::int FROM messages WHERE tenant_id = $1 AND sent_at::date = $2 AND channel = 'email' AND direction = 'outbound') AS sends,
+         (SELECT COUNT(*)::int FROM wizmatch_job_signals WHERE tenant_id = $1 AND status = 'replied_positive' AND updated_at::date = $2) AS positive_replies,
+         (SELECT COUNT(*)::int FROM wizmatch_candidates WHERE tenant_id = $1 AND created_at::date = $2) AS candidates
+      `,
+      [tenantId, today],
+    );
+    const s = stats.rows[0] || {};
+
+    if (WIZMATCH_DAILY_CHANNEL) {
+      await sendSlackMessage(WIZMATCH_DAILY_CHANNEL,
+        `📊 *Wizmatch Daily Digest — ${today}*\n\n` +
+        `Signals: ${s.signals || 0} (${s.priority || 0} priority)\n` +
+        `Sends: ${s.sends || 0}\n` +
+        `Positive replies: ${s.positive_replies || 0}\n` +
+        `Candidates sourced: ${s.candidates || 0}`,
+      ).catch(() => {});
+    }
+    console.log('[CRON] Wizmatch daily digest sent');
+  }), { timezone: 'UTC' });
+  console.log('[cron] Wizmatch daily digest scheduled — 6 PM IST Mon-Sat');
+
+} else {
+  console.log('[cron] Wizmatch crons skipped (DISABLE_BACKGROUND_JOBS or WIZMATCH_TENANT_ID not set)');
+}
+
 /**
  * Stop scheduled crons and intervals, drain in-flight jobs (max 30s).
  * Does NOT close the DB pool — caller decides when to do that.

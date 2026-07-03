@@ -1137,3 +1137,208 @@ export const outboundEvents = pgTable(
     createdAtIdx: index('outbound_events_created_at_idx').on(t.createdAt),
   }),
 );
+
+// ===========================================================================
+// WIZMATCH STAFFING MODULE TABLES
+// US + India IT-staffing outbound module — 6 new tables, all tenant-scoped.
+// All UUID PKs/FKs (no SERIAL) to match the repo convention.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// TABLE 48 — wizmatch_companies
+// ---------------------------------------------------------------------------
+export const wizmatchCompanies = pgTable(
+  'wizmatch_companies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    name: text('name').notNull(),
+    domain: text('domain'),
+    atsType: text('ats_type'), // greenhouse | lever | ashby | workday | icims | taleo | successfactors | none
+    atsBoardUrl: text('ats_board_url'),
+    atsSlug: text('ats_slug'),
+    employeeCount: integer('employee_count'),
+    industry: text('industry'),
+    h1bSponsorCount: integer('h1b_sponsor_count').default(0),
+    state: text('state'),
+    country: text('country').default('US'),
+    linkedinUrl: text('linkedin_url'),
+    isPrime: boolean('is_prime').default(false),
+    primeMsaStatus: text('prime_msa_status').default('none'), // none | in_progress | signed
+    primeMsaSignedAt: timestamp('prime_msa_signed_at'),
+    primeContactId: uuid('prime_contact_id').references(() => contacts.id),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (t) => ({
+    tenantIdIdx: index('wizmatch_companies_tenant_idx').on(t.tenantId),
+    domainIdx: index('wizmatch_companies_domain_idx').on(t.domain),
+    primeIdx: index('wizmatch_companies_prime_idx').on(t.isPrime),
+    tenantNameUniq: uniqueIndex('wizmatch_companies_tenant_name_idx').on(t.tenantId, t.name),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// TABLE 49 — wizmatch_job_signals
+// ---------------------------------------------------------------------------
+export const wizmatchJobSignals = pgTable(
+  'wizmatch_job_signals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    companyId: uuid('company_id').references(() => wizmatchCompanies.id),
+    jobTitle: text('job_title').notNull(),
+    jobUrl: text('job_url'),
+    source: text('source').notNull(), // jobspy | greenhouse | lever | ashby | dice | manual
+    postedAt: timestamp('posted_at'),
+    firstSeenAt: timestamp('first_seen_at').defaultNow(),
+    lastSeenAt: timestamp('last_seen_at').defaultNow(),
+    daysOpen: integer('days_open').default(0),
+    repostCount: integer('repost_count').default(0),
+    salaryRange: text('salary_range'),
+    employmentType: text('employment_type'), // C2C | W2 | 1099 | contract | FTE | unknown
+    keywords: text('keywords').array().default([]),
+    location: text('location'),
+    rawText: text('raw_text'),
+    score: integer('score').default(0),
+    scoreBreakdown: jsonb('score_breakdown').default({}),
+    status: text('status').default('new'), // new | scored | enriched | matched | drafted | sent | replied_positive | replied_other | dead | placed
+    contactId: uuid('contact_id').references(() => contacts.id),
+    companyVolumeCount: integer('company_volume_count').default(0),
+    matchedCandidateIds: uuid('matched_candidate_ids').array().default([]),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (t) => ({
+    tenantScoreIdx: index('wizmatch_job_signals_tenant_score_idx').on(t.tenantId, t.score),
+    statusIdx: index('wizmatch_job_signals_status_idx').on(t.status),
+    companyIdx: index('wizmatch_job_signals_company_idx').on(t.companyId),
+    keywordsIdx: index('wizmatch_job_signals_keywords_idx').on(t.keywords),
+    tenantJobUrlUniq: uniqueIndex('wizmatch_job_signals_tenant_job_url_idx').on(t.tenantId, t.jobUrl),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// TABLE 50 — wizmatch_candidates
+// ---------------------------------------------------------------------------
+export const wizmatchCandidates = pgTable(
+  'wizmatch_candidates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    contactId: uuid('contact_id').notNull().references(() => contacts.id),
+    skills: text('skills').array().notNull(),
+    location: text('location'),
+    visaStatus: text('visa_status'), // H1B | GC | USC | OPT | TN | H4EAD | unknown
+    rateHourly: integer('rate_hourly'),
+    rateCurrency: text('rate_currency').default('USD'),
+    availabilityDate: date('availability_date'),
+    availabilityStatus: text('availability_status').default('available'), // available | submitted | interviewing | placed | benched
+    source: text('source'), // xray | github | naukri | bench_network | referral | manual
+    linkedinUrl: text('linkedin_url'),
+    githubUrl: text('github_url'),
+    resumeUrl: text('resume_url'),
+    matchScore: integer('match_score'),
+    isWizmatchCertified: boolean('is_wizmatch_certified').default(false),
+    indiaSpecific: jsonb('india_specific').default({}),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (t) => ({
+    tenantIdIdx: index('wizmatch_candidates_tenant_idx').on(t.tenantId),
+    skillsIdx: index('wizmatch_candidates_skills_idx').on(t.skills),
+    availabilityIdx: index('wizmatch_candidates_availability_idx').on(t.availabilityStatus),
+    visaIdx: index('wizmatch_candidates_visa_idx').on(t.visaStatus),
+    sourceIdx: index('wizmatch_candidates_source_idx').on(t.source),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// TABLE 51 — wizmatch_placements
+// ---------------------------------------------------------------------------
+export const wizmatchPlacements = pgTable(
+  'wizmatch_placements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    dealId: uuid('deal_id').references(() => deals.id),
+    candidateId: uuid('candidate_id').references(() => wizmatchCandidates.id),
+    jobSignalId: uuid('job_signal_id').references(() => wizmatchJobSignals.id),
+    companyId: uuid('company_id').references(() => wizmatchCompanies.id),
+    primeCompanyId: uuid('prime_company_id').references(() => wizmatchCompanies.id),
+    placementType: text('placement_type'), // contract_c2c | contract_w2 | contract_1099 | permanent
+    billRateHourly: integer('bill_rate_hourly'),
+    payRateHourly: integer('pay_rate_hourly'),
+    marginHourly: integer('margin_hourly'),
+    currency: text('currency').default('USD'),
+    contractStartDate: date('contract_start_date'),
+    contractEndDate: date('contract_end_date'),
+    contractLengthMonths: integer('contract_length_months'),
+    permFeePercentage: numeric('perm_fee_percentage', { precision: 5, scale: 2 }),
+    permCtcAnnual: integer('perm_ctc_annual'),
+    permFeeAmount: integer('perm_fee_amount'),
+    status: text('status').default('submitted'), // submitted | interviewing | offered | started | ended | lost
+    rtrDocumentUrl: text('rtr_document_url'),
+    contractDocumentUrl: text('contract_document_url'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (t) => ({
+    tenantStatusIdx: index('wizmatch_placements_tenant_status_idx').on(t.tenantId, t.status),
+    candidateIdx: index('wizmatch_placements_candidate_idx').on(t.candidateId),
+    companyIdx: index('wizmatch_placements_company_idx').on(t.companyId),
+    primeIdx: index('wizmatch_placements_prime_idx').on(t.primeCompanyId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// TABLE 52 — wizmatch_domain_health
+// ---------------------------------------------------------------------------
+export const wizmatchDomainHealth = pgTable(
+  'wizmatch_domain_health',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    domain: text('domain').notNull(),
+    inboxAddresses: text('inbox_addresses').array().default([]),
+    lastCheckAt: timestamp('last_check_at'),
+    spfOk: boolean('spf_ok'),
+    dkimOk: boolean('dkim_ok'),
+    dmarcOk: boolean('dmarc_ok'),
+    blacklisted: boolean('blacklisted').default(false),
+    blacklistSources: text('blacklist_sources').array().default([]),
+    replyRate7d: real('reply_rate_7d').default(0),
+    bounceRate7d: real('bounce_rate_7d').default(0),
+    sends7d: integer('sends_7d').default(0),
+    status: text('status').default('healthy'), // healthy | warn | paused | blacklisted
+    pausedReason: text('paused_reason'),
+    pausedAt: timestamp('paused_at'),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (t) => ({
+    statusIdx: index('wizmatch_domain_health_status_idx').on(t.status),
+    tenantDomainUniq: uniqueIndex('wizmatch_domain_health_tenant_domain_idx').on(t.tenantId, t.domain),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// TABLE 53 — wizmatch_suppression_list
+// ---------------------------------------------------------------------------
+export const wizmatchSuppressionList = pgTable(
+  'wizmatch_suppression_list',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    contactId: uuid('contact_id').references(() => contacts.id),
+    email: text('email'),
+    reason: text('reason').notNull(), // unsubscribe | hard_bounce | complaint | do_not_contact | manual
+    sourceChannel: text('source_channel'), // email | linkedin | sms | phone
+    suppressedAt: timestamp('suppressed_at').defaultNow(),
+    notes: text('notes'),
+  },
+  (t) => ({
+    tenantEmailIdx: index('wizmatch_suppression_tenant_email_idx').on(t.tenantId, t.email),
+    contactIdx: index('wizmatch_suppression_contact_idx').on(t.contactId),
+    tenantEmailUniq: uniqueIndex('wizmatch_suppression_tenant_email_uniq_idx').on(t.tenantId, t.email),
+  }),
+);

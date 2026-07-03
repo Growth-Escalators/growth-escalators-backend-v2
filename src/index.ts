@@ -57,6 +57,7 @@ import outreachLeadsRouter from './routes/outreachLeads';
 import { ensureOutreachLeadsTable } from './services/outreachLeadsService';
 import outboundRouter from './routes/outbound';
 import leadsRouter from './routes/leads';
+import wizmatchRouter from './routes/wizmatch';
 // Workers and cron jobs now run via src/worker.ts (see railway.json)
 import analyticsRouter from './routes/analytics';
 import whatsappTemplatesRouter from './routes/whatsappTemplates';
@@ -241,6 +242,7 @@ app.use('/api/task-lists', requireAuth, taskListsRouter);
 app.use('/api/team', requireAuth, teamRouter);
 app.use('/api/funnel', funnelRouter);
 app.use('/api/leads', leadsRouter);
+app.use('/api/wizmatch', requireAuth, wizmatchRouter);
 // Funnel-configs: /public/* needs no auth (checkout frontend hits it
 // unauthenticated from ecom.growthescalators.com); everything else is
 // behind requireAuth. The previous hoisted app.get wrapper was a no-op —

@@ -134,6 +134,13 @@
       "when": 1780311708320,
       "tag": "0018_long_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783048003383,
+      "tag": "0019_silly_zodiak",
+      "breakpoints": true
     }
   ]
 }

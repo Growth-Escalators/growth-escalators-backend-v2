@@ -30,6 +30,14 @@ const ClientsPage = lazy(() => import('./pages/ClientsPage.jsx'));
 const FunnelManagementPage = lazy(() => import('./pages/FunnelManagementPage.jsx'));
 const TasksBoardPage = lazy(() => import('./pages/tasks/TasksPage.jsx'));
 const MyAttendancePage = lazy(() => import('./pages/MyAttendancePage.jsx'));
+const WizmatchSignalsPage = lazy(() => import('./pages/WizmatchSignalsPage.jsx'));
+const WizmatchCandidatesPage = lazy(() => import('./pages/WizmatchCandidatesPage.jsx'));
+const WizmatchReviewQueuePage = lazy(() => import('./pages/WizmatchReviewQueuePage.jsx'));
+const WizmatchDomainsPage = lazy(() => import('./pages/WizmatchDomainsPage.jsx'));
+const WizmatchCompliancePage = lazy(() => import('./pages/WizmatchCompliancePage.jsx'));
+const WizmatchPlacementsPage = lazy(() => import('./pages/WizmatchPlacementsPage.jsx'));
+const WizmatchPrimesPage = lazy(() => import('./pages/WizmatchPrimesPage.jsx'));
+const WizmatchAnalyticsPage = lazy(() => import('./pages/WizmatchAnalyticsPage.jsx'));
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -108,6 +116,14 @@ export default function App() {
             <Route path="/tasks" element={<PrivateRoute><TasksBoardPage /></PrivateRoute>} />
             <Route path="/tasks/v2" element={<PrivateRoute><TasksBoardPage /></PrivateRoute>} />
             <Route path="/my-attendance" element={<PrivateRoute><MyAttendancePage /></PrivateRoute>} />
+            <Route path="/wizmatch/signals" element={<PrivateRoute><WizmatchSignalsPage /></PrivateRoute>} />
+            <Route path="/wizmatch/candidates" element={<PrivateRoute><WizmatchCandidatesPage /></PrivateRoute>} />
+            <Route path="/wizmatch/queue" element={<PrivateRoute><WizmatchReviewQueuePage /></PrivateRoute>} />
+            <Route path="/wizmatch/domains" element={<PrivateRoute><WizmatchDomainsPage /></PrivateRoute>} />
+            <Route path="/wizmatch/compliance" element={<PrivateRoute><WizmatchCompliancePage /></PrivateRoute>} />
+            <Route path="/wizmatch/placements" element={<PrivateRoute><WizmatchPlacementsPage /></PrivateRoute>} />
+            <Route path="/wizmatch/primes" element={<PrivateRoute><WizmatchPrimesPage /></PrivateRoute>} />
+            <Route path="/wizmatch/analytics" element={<PrivateRoute><WizmatchAnalyticsPage /></PrivateRoute>} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
