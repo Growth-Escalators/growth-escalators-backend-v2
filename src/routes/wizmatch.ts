@@ -42,9 +42,18 @@ import {
   WIZMATCH_UNSUBSCRIBE_HMAC_SECRET,
   WIZMATCH_MEETING_URL,
 } from '../config/constants';
+import multer from 'multer';
+import { parseRequirement, generateRequirementSheet } from '../services/wizmatchRequirementSheet';
 import logger from '../utils/logger';
 
 const router = Router();
+
+// In-memory upload for requirement JD files (parsed by Claude, then discarded).
+const requirementUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+});
+const ALLOWED_REQ_MEDIA = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
 
 // ============================================================
 // SECTION 1 — SIGNAL ROUTES
@@ -1359,6 +1368,174 @@ router.get('/analytics', async (req: Request, res: Response) => {
     pipeline: pipelineStats.rows,
     sources: sourceStats.rows,
   });
+});
+
+// ============================================================
+// SECTION 9 — REQUIREMENTS (client JD → branded vendor sheet)
+// ============================================================
+
+// POST /requirements/parse — parse pasted text or an uploaded JD file into
+// structured fields (no persistence). If a file is uploaded, also store it to
+// R2 and return source_file_url so the create step can persist it.
+router.post('/requirements/parse', requirementUpload.single('file'), async (req: Request, res: Response) => {
+  const text = (req.body?.text as string) || undefined;
+  const file = req.file;
+
+  if (!text && !file) {
+    res.status(400).json({ error: 'Provide requirement text or a file' });
+    return;
+  }
+  if (file && !ALLOWED_REQ_MEDIA.includes(file.mimetype)) {
+    res.status(400).json({ error: `Unsupported file type ${file.mimetype}. Allowed: PDF, PNG, JPEG, WEBP` });
+    return;
+  }
+
+  try {
+    const parsed = await parseRequirement({
+      text,
+      fileBase64: file ? file.buffer.toString('base64') : undefined,
+      mediaType: file?.mimetype,
+    });
+
+    // Persist the source file so it can be attached to the requirement record.
+    let sourceFileUrl: string | null = null;
+    if (file) {
+      try {
+        const { uploadToR2 } = await import('../utils/r2');
+        sourceFileUrl = await uploadToR2(file.buffer, file.originalname || 'jd', file.mimetype);
+      } catch (e) {
+        logger.warn(`[wizmatch-req] source file upload skipped: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
+    }
+
+    res.json({ parsed, source_file_url: sourceFileUrl });
+  } catch (e) {
+    logger.error({ err: e }, '[wizmatch] requirement parse failed');
+    res.status(500).json({ error: 'parse failed', detail: e instanceof Error ? e.message : 'unknown' });
+  }
+});
+
+// GET /requirements — list
+router.get('/requirements', async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const offset = Number(req.query.offset) || 0;
+
+  const conditions: string[] = ['r.tenant_id = $1'];
+  const params: unknown[] = [tenantId];
+  let paramIdx = 2;
+  if (req.query.status) { conditions.push(`r.status = $${paramIdx++}`); params.push(req.query.status); }
+  if (req.query.region) { conditions.push(`r.region = $${paramIdx++}`); params.push(req.query.region); }
+
+  const whereClause = conditions.join(' AND ');
+  const dataResult = await pool.query(
+    `SELECT r.*, comp.name AS company_name
+     FROM wizmatch_requirements r
+     LEFT JOIN wizmatch_companies comp ON comp.id = r.company_id
+     WHERE ${whereClause}
+     ORDER BY r.created_at DESC
+     LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
+    [...params, limit, offset],
+  );
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM wizmatch_requirements r WHERE ${whereClause}`,
+    params,
+  );
+  res.json({ items: dataResult.rows, total: countResult.rows[0]?.total ?? 0 });
+});
+
+// GET /requirements/:id
+router.get('/requirements/:id', async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId;
+  const result = await pool.query(
+    `SELECT r.*, comp.name AS company_name
+     FROM wizmatch_requirements r
+     LEFT JOIN wizmatch_companies comp ON comp.id = r.company_id
+     WHERE r.id = $1 AND r.tenant_id = $2`,
+    [req.params.id, tenantId],
+  );
+  if (result.rows.length === 0) { res.status(404).json({ error: 'Requirement not found' }); return; }
+  res.json(result.rows[0]);
+});
+
+// POST /requirements — create from the confirmed form
+router.post('/requirements', async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId;
+  const b = req.body as Record<string, unknown>;
+
+  if (!b.title) { res.status(400).json({ error: 'title required' }); return; }
+
+  const result = await pool.query(
+    `INSERT INTO wizmatch_requirements
+     (tenant_id, company_id, title, raw_jd, required_skills, nice_to_have_skills,
+      min_experience, max_experience, location, work_mode, employment_type, region,
+      budget_min, budget_max, budget_currency, budget_period, positions, priority,
+      mask_client, source_file_url, vendor_notes, created_by, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,NOW(),NOW())
+     RETURNING *`,
+    [
+      tenantId,
+      b.company_id || null,
+      b.title,
+      b.raw_jd || null,
+      (b.required_skills as string[]) || [],
+      (b.nice_to_have_skills as string[]) || [],
+      b.min_experience ?? null,
+      b.max_experience ?? null,
+      b.location || null,
+      b.work_mode || null,
+      b.employment_type || null,
+      b.region || 'india',
+      b.budget_min ?? null,
+      b.budget_max ?? null,
+      b.budget_currency || 'INR',
+      b.budget_period || 'monthly',
+      b.positions ?? 1,
+      b.priority || 'normal',
+      b.mask_client === false ? false : true,
+      b.source_file_url || null,
+      b.vendor_notes || null,
+      req.user!.id || null,
+    ],
+  );
+  res.json(result.rows[0]);
+});
+
+// PUT /requirements/:id — edit fields / status (allowlist, like PUT /candidates)
+router.put('/requirements/:id', async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId;
+  const updates = req.body as Record<string, unknown>;
+
+  const allowed = [
+    'title', 'raw_jd', 'required_skills', 'nice_to_have_skills', 'min_experience',
+    'max_experience', 'location', 'work_mode', 'employment_type', 'region',
+    'budget_min', 'budget_max', 'budget_currency', 'budget_period', 'positions',
+    'priority', 'mask_client', 'vendor_notes', 'status', 'company_id',
+  ];
+  const setClauses: string[] = ['updated_at = NOW()'];
+  const params: unknown[] = [req.params.id, tenantId];
+  let paramIdx = 3;
+  for (const [key, value] of Object.entries(updates)) {
+    const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+    if (allowed.includes(snakeKey)) {
+      setClauses.push(`${snakeKey} = $${paramIdx++}`);
+      params.push(value);
+    }
+  }
+  const result = await pool.query(
+    `UPDATE wizmatch_requirements SET ${setClauses.join(', ')} WHERE id = $1 AND tenant_id = $2 RETURNING *`,
+    params,
+  );
+  if (result.rows.length === 0) { res.status(404).json({ error: 'Requirement not found' }); return; }
+  res.json(result.rows[0]);
+});
+
+// POST /requirements/:id/sheet — generate the branded PDF
+router.post('/requirements/:id/sheet', async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId;
+  const result = await generateRequirementSheet(String(req.params.id), tenantId);
+  if (!result.success) { res.status(500).json({ error: result.error }); return; }
+  res.json({ sheet_url: result.sheet_url });
 });
 
 export default router;

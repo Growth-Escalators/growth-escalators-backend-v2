@@ -44,3 +44,11 @@ export const WIZMATCH_SYSTEM_CHANNEL = process.env.WIZMATCH_SYSTEM_CHANNEL ?? ''
 export const WIZMATCH_PHYSICAL_ADDRESS = process.env.WIZMATCH_PHYSICAL_ADDRESS ?? 'Wizmatch LLC, Newark, DE, USA';
 export const WIZMATCH_UNSUBSCRIBE_HMAC_SECRET = process.env.WIZMATCH_UNSUBSCRIBE_HMAC_SECRET ?? '';
 export const WIZMATCH_MEETING_URL = process.env.WIZMATCH_MEETING_URL ?? 'https://cal.com/wizmatch/intro';
+
+// Branding for generated documents (RTR, requirement sheets). Override per-env.
+export const WIZMATCH_BRAND_NAME = process.env.WIZMATCH_BRAND_NAME ?? 'Wizmatch';
+export const WIZMATCH_BRAND_TAGLINE = process.env.WIZMATCH_BRAND_TAGLINE ?? 'IT Staffing & Consulting — US & India';
+export const WIZMATCH_BRAND_EMAIL = process.env.WIZMATCH_BRAND_EMAIL ?? 'team@getwizmatch.com';
+export const WIZMATCH_BRAND_WEBSITE = process.env.WIZMATCH_BRAND_WEBSITE ?? 'getwizmatch.com';
+export const WIZMATCH_BRAND_PHONE = process.env.WIZMATCH_BRAND_PHONE ?? '';
+export const WIZMATCH_BRAND_ACCENT = process.env.WIZMATCH_BRAND_ACCENT ?? '#3b82f6';
