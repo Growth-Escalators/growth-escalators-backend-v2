@@ -1342,3 +1342,46 @@ export const wizmatchSuppressionList = pgTable(
     tenantEmailUniq: uniqueIndex('wizmatch_suppression_tenant_email_uniq_idx').on(t.tenantId, t.email),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// TABLE 54 — wizmatch_requirements
+// A client-supplied job requirement (typed or uploaded JD) that we reformat
+// into our own branded requirement sheet (PDF) to broadcast to sub-vendors.
+// ---------------------------------------------------------------------------
+export const wizmatchRequirements = pgTable(
+  'wizmatch_requirements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    companyId: uuid('company_id').references(() => wizmatchCompanies.id), // end client (nullable / maskable)
+    title: text('title').notNull(),
+    rawJd: text('raw_jd'), // original pasted/extracted JD text
+    requiredSkills: text('required_skills').array().default([]),
+    niceToHaveSkills: text('nice_to_have_skills').array().default([]),
+    minExperience: integer('min_experience'), // years
+    maxExperience: integer('max_experience'),
+    location: text('location'),
+    workMode: text('work_mode'), // onsite | remote | hybrid
+    employmentType: text('employment_type'), // contract_c2c | contract_w2 | contract | permanent | ...
+    region: text('region').default('india'), // india | us
+    budgetMin: integer('budget_min'),
+    budgetMax: integer('budget_max'),
+    budgetCurrency: text('budget_currency').default('INR'),
+    budgetPeriod: text('budget_period').default('monthly'), // hourly | monthly | annual
+    positions: integer('positions').default(1),
+    priority: text('priority').default('normal'), // low | normal | high | urgent
+    maskClient: boolean('mask_client').default(true), // hide end-client name on the vendor sheet
+    sourceFileUrl: text('source_file_url'), // uploaded JD file in R2
+    sheetUrl: text('sheet_url'), // generated branded PDF in R2
+    vendorNotes: text('vendor_notes'),
+    status: text('status').default('draft'), // draft | sheet_ready | shared | closed
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (t) => ({
+    tenantStatusIdx: index('wizmatch_requirements_tenant_status_idx').on(t.tenantId, t.status),
+    companyIdx: index('wizmatch_requirements_company_idx').on(t.companyId),
+    regionIdx: index('wizmatch_requirements_region_idx').on(t.region),
+  }),
+);
