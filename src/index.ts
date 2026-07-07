@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { createServer } from 'http';
@@ -300,7 +301,11 @@ app.post('/api/feedback', requireAuth, async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 // `clientDist` (D2C landing pages) was removed when the SPA moved to Vercel.
 // Admin SPA still ships from this process for crm.growthescalators.com.
-const adminDist  = path.join(__dirname, '..', 'public', 'admin');
+const builtAdminDist = path.join(__dirname, 'public', 'admin');
+const sourceAdminDist = path.join(__dirname, '..', 'public', 'admin');
+const adminDist = fs.existsSync(path.join(builtAdminDist, 'index.html'))
+  ? builtAdminDist
+  : sourceAdminDist;
 
 console.log('Admin dist:', adminDist);
 
