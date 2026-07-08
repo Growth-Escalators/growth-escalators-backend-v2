@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate with: npm run ai:brief -->
 
-_Generated: 2026-07-07T19:35:18.976Z_
+_Generated: 2026-07-08T05:39:45.870Z_
 
 This is a machine-generated snapshot of local repo state. It exists so any AI agent or fresh
 chat can rebuild context from the repo alone. For durable guidance read `AGENTS.md`,
@@ -12,25 +12,26 @@ chat can rebuild context from the repo alone. For durable guidance read `AGENTS.
 
 - **Repo**: growth-escalators-backend-v2
 - **Branch**: `feature/contact-intelligence-phase1-adr`
-- **Last commit**: 3319859 feat(crm): unify Growth and Wizmatch tenant profiles (2 hours ago)
-- **Uncommitted changes**: 13 file(s)
+- **Last commit**: 4358068 feat(crm): harden Wizmatch shared routes (7 hours ago)
+- **Uncommitted changes**: 26 file(s)
 
 ## Current task
 
-**Growth + Wizmatch tenant-separated CRM correction** — make Wizmatch a full CRM profile that
-reuses the shared Growth CRM modules while showing only Wizmatch tenant data, plus Wizmatch-specific
-staffing pages.
+**CRM portal error hardening** — stop shared Growth/Wizmatch CRM pages from crashing when live API
+data contains richer/non-string values, and make Wizmatch live operating pages degrade to readiness
+signals instead of page-level 500 fallbacks when optional/newer Wizmatch tables are missing.
 
-Scope is **routing, navigation, tenant-aware product shell, Wizmatch dashboard, manual
-Wizmatch AI Intelligence, generated admin bundle, tests, and AI context**. This task does not add
-schema, migrations, auto-outreach, automatic candidate submission, worker/cron automation, package,
-or deployment config changes.
+Scope is **pipeline stage normalization, admin frontend display/search hardening, route-level
+error-boundary recovery, Wizmatch optional-schema API fallbacks, tests, browser smoke, and AI
+context**. This task does not add schema, migrations, auto-outreach, automatic candidate
+submission, worker/cron automation, package, or deployment config changes.
 
 > Full detail in [`.ai/CURRENT_TASK.md`](CURRENT_TASK.md) · state in [`.ai/CURRENT_STATE.md`](CURRENT_STATE.md)
 
 ## Recent commits
 
 ```
+4358068 feat(crm): harden Wizmatch shared routes
 3319859 feat(crm): unify Growth and Wizmatch tenant profiles
 d98ddad fix(auth): separate product navigation and lead routing
 e3d683f fix(admin): serve freshly built login bundle
@@ -40,7 +41,6 @@ ecd140c fix(deploy): install admin dependencies in nixpacks
 d2e1fec fix(wizmatch): harden analytics against optional schema gaps
 717b167 feat(wizmatch): add candidate profile intake
 20b737c feat(wizmatch): add paid discovery cost guard
-2218a65 feat(wizmatch): add preview-first contact discovery
 ```
 
 ## npm scripts

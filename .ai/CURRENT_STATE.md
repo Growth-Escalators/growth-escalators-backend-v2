@@ -24,6 +24,9 @@ _Update this when the working state of the repo meaningfully changes. Keep it sh
   Pipeline, Tasks, Inbox, Billing, Finance, Email Templates, WhatsApp Templates, Lead Discovery,
   Outreach, AI Intelligence, Permissions, Audit, and Pipeline Settings. The same shared modules
   use the logged-in tenant token, so Growth data and Wizmatch data stay separated.
+- CRM portal hardening now supports both classic string pipeline stages and Wizmatch object stages
+  like `{ id, name, color }`. Shared admin pages coerce display/search values before calling string
+  helpers, and the route error boundary resets on navigation instead of trapping the full SPA.
 
 ## In progress
 
@@ -72,6 +75,9 @@ _Update this when the working state of the repo meaningfully changes. Keep it sh
   `wizmatch_company_intelligence`, `wizmatch_contact_candidates`, and `wizmatch_discovery_runs`
   tables. That means existing production Wizmatch data is not pure dummy data, but it is not yet
   client-ready operating data.
+  Portal hardening on 2026-07-08 IST also made Wizmatch dashboard/workbench/readiness/cost
+  surfaces degrade to zeroed `needs_migration_check` readiness/cost data when optional/newer
+  Wizmatch tables are absent, instead of surfacing a generic internal-server-error fallback.
 
 ## Recently landed (context)
 
@@ -109,7 +115,9 @@ _Update this when the working state of the repo meaningfully changes. Keep it sh
   (`wizmatch_company_intelligence`, `wizmatch_contact_candidates`, `wizmatch_discovery_runs`).
   Do not apply migrations without explicit approval. Until these exist in the target environment,
   live requirement intake, Contact Intelligence persistence, discovery-run audit/cost tracking,
-  and richer Data Readiness/AI Intelligence cannot use real persisted operating data.
+  and richer Data Readiness/AI Intelligence cannot use real persisted operating data. The UI/API
+  now explain this as readiness/cost fallback state where possible, but the underlying missing
+  production data remains unresolved.
 - To get real Wizmatch data flowing from the next business day without adding new automation:
   first get explicit approval for applying required migrations/deploying the branch, then load
   5-10 real requirements and 20-30 vetted candidate profiles manually, dispatch existing

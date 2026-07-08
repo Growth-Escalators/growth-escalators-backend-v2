@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import { apiFetch } from '../lib/api.js';
 import { getAuthToken } from '../lib/auth.js';
+import { safeLower } from '../lib/safe.js';
 
 function safeISOString(date) {
   if (!(date instanceof Date) || isNaN(date.getTime())) return '1970-01-01T00:00:00.000Z';
@@ -1148,8 +1149,8 @@ export default function BillingPage() {
   const filtered = invoicesList.filter(inv => {
     if (filterStatus && inv.status !== filterStatus) return false;
     if (search) {
-      const q = search.toLowerCase();
-      if (!inv.client_name?.toLowerCase().includes(q) && !inv.invoice_number?.toLowerCase().includes(q)) return false;
+      const q = safeLower(search);
+      if (!safeLower(inv.client_name).includes(q) && !safeLower(inv.invoice_number).includes(q)) return false;
     }
     return true;
   });

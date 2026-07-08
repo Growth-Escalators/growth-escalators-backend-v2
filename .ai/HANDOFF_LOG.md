@@ -1098,3 +1098,44 @@ enrichment work.
 
 **Verification**
 - `git diff --check` passed.
+
+## 2026-07-08 — Step 22: CRM portal error hardening — Codex — VERIFIED LOCALLY
+
+**What was done**
+- Fixed the `/wizmatch/pipeline` crash caused by Wizmatch object-based pipeline stages
+  (`{ id, name, color }`) meeting string-only pipeline rendering/grouping code.
+- Added shared backend/admin pipeline-stage normalization so Growth string stages and Wizmatch
+  object stages both render safely.
+- Hardened shared admin display/search paths against non-string API values in Pipeline, Pipeline
+  Manager, Billing, Dashboard, Inbox, Links, SEO, Clients, Meta Assets, Contact drawer, and command
+  palette.
+- Updated the app error boundary so route changes reset the error state and the fallback includes
+  the failed path plus a dashboard recovery action.
+- Made Wizmatch workbench/dashboard/readiness/cost paths tolerate missing optional/newer Wizmatch
+  tables where possible, returning zeroed readiness/cost fallback data instead of generic 500
+  failures.
+- Added regression tests for pipeline stage normalization and missing `wizmatch_discovery_runs`
+  cost-guard usage.
+- Updated `.ai/CURRENT_TASK.md`, `.ai/CURRENT_STATE.md`, `docs/PRODUCT_SYSTEM_BRIEF.md`, and
+  regenerated `.ai/AI_BRIEF.md`.
+
+**Guardrails preserved**
+- No schema or migration edits.
+- No production DB writes.
+- No paid enrichment/provider calls.
+- No outreach sending.
+- No automatic candidate submissions.
+- No worker/cron automation added.
+- No deployment config changes.
+- Untracked `node_modules` folders were not staged.
+
+**Verification**
+- `npx vitest run src/__tests__/pipelineStages.test.ts src/__tests__/wizmatchCostGuard.test.ts src/__tests__/wizmatchContactIntelligenceRoutes.test.ts` passed.
+- `npm run build` passed.
+- `npm test` passed: 25 files, 227 tests.
+- `npm run admin:build` passed.
+- Browser smoke against local Vite with mocked authenticated sessions passed:
+  - 15 Wizmatch routes rendered with production-like object-stage pipeline data.
+  - 15 Growth shared routes rendered.
+  - No route hit the app error boundary.
+- `git diff --check` passed.

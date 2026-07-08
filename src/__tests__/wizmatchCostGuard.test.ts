@@ -4,6 +4,7 @@ import {
   calculateWizmatchProviderCostCents,
   emptyWizmatchCostGuardUsage,
   evaluateWizmatchCostGuard,
+  fetchWizmatchCostGuardUsage,
   getWizmatchCostGuardConfig,
   getWizmatchProviderEnvStatus,
   type WizmatchCostGuardUsage,
@@ -85,5 +86,17 @@ describe('Wizmatch cost guard', () => {
     expect(result.httpStatus).toBe(503);
     expect(result.providerEnv.missing).toContain('APOLLO_API_KEY');
     expect(result.providerEnv.missing).toContain('SERPER_API_KEY');
+  });
+
+  it('returns zero usage when the optional discovery-runs table is missing', async () => {
+    const pool = {
+      query: async () => {
+        const error = new Error('relation "wizmatch_discovery_runs" does not exist') as Error & { code: string };
+        error.code = '42P01';
+        throw error;
+      },
+    };
+
+    await expect(fetchWizmatchCostGuardUsage(pool as any, 'tenant-1', 'user-1')).resolves.toEqual(emptyWizmatchCostGuardUsage());
   });
 });

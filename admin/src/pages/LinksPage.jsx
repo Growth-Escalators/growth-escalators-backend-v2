@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import { apiFetch } from '../lib/api.js';
+import { safeLower } from '../lib/safe.js';
 import {
   Link, Plus, Copy, BarChart2, ExternalLink, RefreshCw,
   Tag, Trash2, Check, ChevronRight, Search, Globe, MousePointer
@@ -221,11 +222,10 @@ export default function LinksPage() {
 
   useEffect(() => { loadLinks(); }, [loadLinks]);
 
-  const filtered = (links ?? []).filter(l =>
-    !search || l.shortCode?.toLowerCase().includes(search.toLowerCase()) ||
-    l.longUrl?.toLowerCase().includes(search.toLowerCase()) ||
-    l.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = (links ?? []).filter(l => {
+    const q = safeLower(search);
+    return !q || safeLower(l.shortCode).includes(q) || safeLower(l.longUrl).includes(q) || l.tags?.some(t => safeLower(t).includes(q));
+  });
 
   function handleCreated(newLink) {
     loadLinks();

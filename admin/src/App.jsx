@@ -63,25 +63,45 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(error, info) {
     console.error('[ErrorBoundary]', error, info);
   }
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
   render() {
     if (this.state.hasError) {
+      const failedPath = this.props.resetKey || window.location.pathname;
       return (
         <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'system-ui' }}>
           <h2 style={{ color: '#dc2626', marginBottom: '16px' }}>Something went wrong</h2>
           <p style={{ color: '#64748b', marginBottom: '24px' }}>
             {this.state.error?.message || 'An unexpected error occurred'}
           </p>
+          <p style={{ color: '#94a3b8', marginBottom: '24px', fontSize: '13px' }}>
+            Failed page: {failedPath}
+          </p>
           <button
             onClick={() => window.location.reload()}
-            style={{ padding: '8px 24px', background: '#0284c7', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }}
+            style={{ padding: '8px 24px', background: '#0284c7', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', marginRight: '12px' }}
           >
             Reload Page
+          </button>
+          <button
+            onClick={() => { window.location.href = getProductHome(getTenantSlug()); }}
+            style={{ padding: '8px 24px', background: '#0f172a', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }}
+          >
+            Go to Dashboard
           </button>
         </div>
       );
     }
     return this.props.children;
   }
+}
+
+function RouteErrorBoundary({ children }) {
+  const location = useLocation();
+  return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>;
 }
 
 function PrivateRoute({ children }) {
@@ -138,8 +158,8 @@ function HomeRedirect() {
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <BrowserRouter>
+    <BrowserRouter>
+      <RouteErrorBoundary>
         <Suspense fallback={<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh'}}><p>Loading...</p></div>}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -235,7 +255,7 @@ export default function App() {
             <Route path="*" element={<HomeRedirect />} />
           </Routes>
         </Suspense>
-      </BrowserRouter>
-    </ErrorBoundary>
+      </RouteErrorBoundary>
+    </BrowserRouter>
   );
 }

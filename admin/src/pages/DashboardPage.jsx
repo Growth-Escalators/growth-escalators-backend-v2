@@ -3,6 +3,7 @@ import Sidebar from '../components/Sidebar.jsx';
 import TopBar from '../components/TopBar.jsx';
 import GlobalSearch from '../components/GlobalSearch.jsx';
 import { apiFetch, getUser } from '../lib/api.js';
+import { safeLower } from '../lib/safe.js';
 import { KpiTile, Card, Badge } from '../components/ui/index.js';
 import {
   Users, TrendingUp, DollarSign, Receipt, BarChart2, Kanban,
@@ -199,7 +200,7 @@ export default function DashboardPage() {
 
           // Filter to current user's actions
           const myItems = (Array.isArray(problems) ? problems : [])
-            .filter(p => !firstName || firstName === 'there' || (p.owner || '').toLowerCase().includes(firstName.toLowerCase()));
+            .filter(p => !firstName || firstName === 'there' || safeLower(p.owner).includes(safeLower(firstName)));
           setMyActions(myItems);
 
           // Set coaching scores
@@ -239,7 +240,7 @@ export default function DashboardPage() {
   const outstanding = billing?.outstanding;
   const overdueCount = billing?.overdueCount ?? 0;
   const pipelineValue = pipelineSummary?.totalValue ?? 0;
-  const dealsInProposal = pipelineSummary?.stages?.find(s => s.stage?.toLowerCase() === 'proposal')?.count ?? 0;
+  const dealsInProposal = pipelineSummary?.stages?.find(s => safeLower(s.stage) === 'proposal')?.count ?? 0;
   const intelScore = intelligence?.overall_score;
   const intelFocus = intelligence?.analysis;
   const outreachTotal = outreach?.totalLeads ?? 0;
