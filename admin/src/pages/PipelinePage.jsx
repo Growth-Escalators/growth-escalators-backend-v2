@@ -7,6 +7,7 @@ import ContactSlideIn from '../components/ContactSlideIn.jsx';
 import DealDrawer from '../components/DealDrawer.jsx';
 import { apiFetch } from '../lib/api.js';
 import { productPath } from '../lib/auth.js';
+import { safeInitial, safeLower, safeText } from '../lib/safe.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -15,7 +16,7 @@ function getStageStyle(stageName, index) {
   // Named-stage colors per design spec — matched by substring so custom
   // pipelines (Pipeline Manager lets users rename/add stages) still fall
   // back sensibly to the generic palette below.
-  const lc = (stageName ?? '').toLowerCase();
+  const lc = safeLower(stageName);
   if (lc.includes('won')) return { color: '#22c55e', light: 'bg-success-500/10 border-success-500/20' };
   if (lc.includes('lost')) return { color: '#dc2626', light: 'bg-danger-500/10 border-danger-500/20' };
   if (lc.includes('abandoned')) return { color: '#f59e0b', light: 'bg-warning-500/10 border-warning-500/20' };
@@ -35,12 +36,12 @@ function getStageStyle(stageName, index) {
 }
 
 function isTerminalStage(name) {
-  const lc = (name ?? '').toLowerCase();
+  const lc = safeLower(name);
   return lc.includes('won') || lc.includes('lost') || lc.includes('abandoned');
 }
-function isWonStage(name) { return (name ?? '').toLowerCase().includes('won'); }
-function isLostStage(name) { return (name ?? '').toLowerCase().includes('lost'); }
-function isAbandonedStage(name) { return (name ?? '').toLowerCase().includes('abandoned'); }
+function isWonStage(name) { return safeLower(name).includes('won'); }
+function isLostStage(name) { return safeLower(name).includes('lost'); }
+function isAbandonedStage(name) { return safeLower(name).includes('abandoned'); }
 
 function daysAgo(dateStr) {
   if (!dateStr) return 0;
@@ -54,6 +55,7 @@ function fmtInr(val) {
 }
 
 function stringToColor(str = '') {
+  str = safeText(str);
   let hash = 0;
   for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
   const colors = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#EF4444', '#6366F1', '#14B8A6'];
@@ -68,6 +70,7 @@ const ASSIGNEE_COLORS = { jatin: '#F97316', saksham: '#3B82F6' };
 function DealCard({ deal, index, onClick, onArchive, onUnarchive, selected = false, onToggleSelect, selectionMode = false }) {
   const days = daysAgo(deal.updatedAt || deal.createdAt);
   const isArchived = deal.metadata?.archived === true;
+  const assignedTo = safeText(deal.assignedTo);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -158,13 +161,13 @@ function DealCard({ deal, index, onClick, onArchive, onUnarchive, selected = fal
             </div>
             <div className="flex items-center gap-1">
               <span className={`text-[10px] text-neutral-400 ${days > 3 ? 'text-danger-500' : ''}`}>{days}d</span>
-              {deal.assignedTo ? (
+              {assignedTo ? (
                 <span
                   className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold uppercase"
-                  style={{ background: ASSIGNEE_COLORS[deal.assignedTo.toLowerCase()] ?? stringToColor(deal.assignedTo) }}
-                  title={deal.assignedTo}
+                  style={{ background: ASSIGNEE_COLORS[safeLower(assignedTo)] ?? stringToColor(assignedTo) }}
+                  title={assignedTo}
                 >
-                  {deal.assignedTo[0]}
+                  {safeInitial(assignedTo)}
                 </span>
               ) : (
                 <span className="w-5 h-5 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-400 text-[9px]">?</span>
@@ -525,8 +528,8 @@ export default function PipelinePage() {
   }, []);
 
   const activePipeline = pipelinesList.find((p) => p.id === activePipelineId);
-  const totalDeals = kanbanStages.reduce((s, st) => s + st.deals.length, 0);
-  const totalValue = kanbanStages.reduce((s, st) => s + (st.totalValue ?? 0), 0);
+  const totalDeals = kanbanStages.reduce((s, st) => s + (Array.isArray(st.deals) ? st.deals.length : 0), 0);
+  const totalValue = kanbanStages.reduce((s, st) => s + Number(st.totalValue ?? 0), 0);
 
   async function archiveDeal(dealId, archived) {
     let deal = null;
@@ -548,9 +551,9 @@ export default function PipelinePage() {
 
   function applyMove(deal, fromStage, toStage, destIndex) {
     setKanbanStages((prev) => prev.map((s) => {
-      if (s.stageName === fromStage) return { ...s, deals: s.deals.filter((d) => d.id !== deal.id) };
+      if (s.stageName === fromStage) return { ...s, deals: (s.deals ?? []).filter((d) => d.id !== deal.id) };
       if (s.stageName === toStage) {
-        const arr = [...s.deals];
+        const arr = [...(s.deals ?? [])];
         arr.splice(destIndex, 0, { ...deal, stage: toStage });
         return { ...s, deals: arr };
       }
@@ -564,7 +567,7 @@ export default function PipelinePage() {
     const fromStage = source.droppableId;
     const toStage = destination.droppableId;
     const fromData = kanbanStages.find((s) => s.stageName === fromStage);
-    const deal = fromData?.deals.find((d) => d.id === draggableId);
+    const deal = fromData?.deals?.find((d) => d.id === draggableId);
     if (!deal) return;
     if (isTerminalStage(toStage)) {
       setWonLostModal({ deal, fromStage, toStage, destIndex: destination.index });
@@ -771,11 +774,13 @@ export default function PipelinePage() {
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex gap-3 px-4 py-4 overflow-x-auto snap-x snap-mandatory md:overflow-x-visible flex-1">
               {kanbanStages.map((stageData, stageIndex) => {
-                const { color, light } = getStageStyle(stageData.stageName, stageIndex);
+                const displayStageName = stageData.stageLabel || stageData.stageName;
+                const { color, light } = getStageStyle(displayStageName, stageIndex);
+                const headerColor = stageData.stageColor || color;
                 const stageDeals = (stageData.deals ?? []).filter(deal => {
                   if (filterAssigned) {
                     if (filterAssigned === 'unassigned' && deal.assignedTo) return false;
-                    if (filterAssigned !== 'unassigned' && deal.assignedTo?.toLowerCase() !== filterAssigned) return false;
+                    if (filterAssigned !== 'unassigned' && safeLower(deal.assignedTo) !== filterAssigned) return false;
                   }
                   if (filterValue) {
                     const v = Number(deal.dealValue || 0);
@@ -792,15 +797,15 @@ export default function PipelinePage() {
                   return true;
                 });
                 return (
-                  <div key={stageData.stageName} className={`snap-center min-w-[85vw] md:min-w-[220px] flex flex-col rounded-xl border ${light} w-[220px] shrink-0`}>
+                  <div key={stageData.stageId || stageData.stageName} className={`snap-center min-w-[85vw] md:min-w-[220px] flex flex-col rounded-xl border ${light} w-[220px] shrink-0`}>
                     {/* Column header */}
                     <div
                       className="rounded-t-xl px-3 py-2.5"
-                      style={{ background: color }}
+                      style={{ background: headerColor }}
                     >
                       <div className="flex items-center justify-between mb-0.5">
                         <h2 className="text-white font-semibold text-xs uppercase tracking-wide truncate flex-1 mr-1">
-                          {stageData.stageName}
+                          {displayStageName}
                         </h2>
                         <span className="bg-white/25 text-white text-xs font-bold px-1.5 py-0.5 rounded-full shrink-0">
                           {stageDeals.length}

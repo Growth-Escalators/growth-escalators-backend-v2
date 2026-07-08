@@ -289,6 +289,12 @@ data, but is not yet client-ready operating data. It has 192 GitHub-sourced cont
 job signals, deals, tasks, messages, templates, billing records, invoices, payments, placements,
 or suppression rows, and production is missing the newer requirements/contact-intelligence tables.
 
+Portal hardening note from 2026-07-08 IST: shared CRM pipeline pages now support both classic
+string stages and richer stage objects such as `{ id, name, color }`, which matters for Wizmatch
+placement pipelines. Wizmatch live operating pages should degrade to readiness/cost fallback data
+when optional/newer Wizmatch tables are absent, but that fallback does not replace the need to
+apply approved migrations and load real operating data.
+
 ## AI And Automation
 
 The system uses AI as an assistive operating layer, not an unchecked autopilot:

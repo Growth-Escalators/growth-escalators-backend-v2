@@ -2,53 +2,33 @@
 
 ## Active task
 
-**Growth + Wizmatch tenant-separated CRM correction** — make Wizmatch a full CRM profile that
-reuses the shared Growth CRM modules while showing only Wizmatch tenant data, plus Wizmatch-specific
-staffing pages.
+**CRM portal error hardening** — stop shared Growth/Wizmatch CRM pages from crashing when live API
+data contains richer/non-string values, and make Wizmatch live operating pages degrade to readiness
+signals instead of page-level 500 fallbacks when optional/newer Wizmatch tables are missing.
 
-Scope is **routing, navigation, tenant-aware product shell, Wizmatch dashboard, manual
-Wizmatch AI Intelligence, generated admin bundle, tests, and AI context**. This task does not add
-schema, migrations, auto-outreach, automatic candidate submission, worker/cron automation, package,
-or deployment config changes.
+Scope is **pipeline stage normalization, admin frontend display/search hardening, route-level
+error-boundary recovery, Wizmatch optional-schema API fallbacks, tests, browser smoke, and AI
+context**. This task does not add schema, migrations, auto-outreach, automatic candidate
+submission, worker/cron automation, package, or deployment config changes.
 
 ## Definition of done
 
-- [x] Keep Growth routes as-is for Growth Escalators users.
-- [x] Add Wizmatch-prefixed routes for shared modules:
-  `/wizmatch/dashboard`, `/wizmatch/contacts`, `/wizmatch/pipeline`, `/wizmatch/tasks`,
-  `/wizmatch/inbox`, `/wizmatch/billing`, `/wizmatch/finance`, `/wizmatch/emails`,
-  `/wizmatch/whatsapp-templates`, `/wizmatch/discover`, `/wizmatch/outreach`,
-  `/wizmatch/intelligence`, `/wizmatch/settings/permissions`, `/wizmatch/settings/audit`,
-  and `/wizmatch/pipelines/settings`.
-- [x] Route Wizmatch home to `/wizmatch/dashboard`.
-- [x] Redirect Wizmatch users from shared Growth paths to matching `/wizmatch/*` paths.
-- [x] Keep Growth-only marketing modules out of the Wizmatch sidebar by default.
-- [x] Keep Wizmatch staffing pages visible in the Wizmatch profile.
-- [x] Add a live Wizmatch dashboard summary endpoint/page.
-- [x] Add manual Claude-powered Wizmatch AI Intelligence endpoint/page focused on staffing data.
-- [x] Preserve tenant separation through existing authenticated tenant-scoped backend routes.
-- [x] Run backend build, full Vitest suite, admin build, and refresh AI brief.
+- [x] Normalize pipeline stages so string stages and object stages like
+  `{ id, name, color }` both render safely.
+- [x] Preserve Growth string-stage compatibility while allowing Wizmatch object-stage pipelines.
+- [x] Harden shared CRM frontend string/search/display paths against non-string API values.
+- [x] Make the app error boundary reset on route changes and offer a dashboard recovery action.
+- [x] Make Wizmatch workbench/dashboard/readiness/cost paths tolerate missing optional/newer
+  Wizmatch tables with zeroed fallback/readiness data instead of frontend 500 fallback screens.
+- [x] Add focused regression coverage for pipeline stage normalization and missing
+  `wizmatch_discovery_runs` cost-guard usage.
+- [x] Run backend build, full Vitest suite, admin build, browser smoke, diff check, and refresh AI
+  brief.
 
 ## Next task
 
-- [x] Browser-smoke the Wizmatch shared routes with mocked authenticated sessions.
-- [x] Confirm Wizmatch users redirect from Growth shared routes to matching `/wizmatch/*` paths in
-  the frontend route guard.
-- [x] Confirm Growth users do not enter `/wizmatch/*`; a Growth-only session now redirects to
-  `/dashboard`.
-- [x] Fix shared internal links found during smoke so Wizmatch search/contact/pipeline/discovery
-  links stay on `/wizmatch/*`.
-- [x] Browser-smoke the new Wizmatch shared/staffing routes after latest verification: 24
-  Wizmatch authenticated routes rendered with mocked API payloads, 15 Growth shared routes
-  redirected to matching `/wizmatch/*` paths for Wizmatch users, and Growth-only sessions were
-  blocked from `/wizmatch/dashboard` back to `/dashboard`.
-- [x] Confirm production Wizmatch data shape from a read-only Railway/Postgres aggregate query.
-  Production has real GitHub-sourced candidate/contact rows, but it does not yet have usable
-  business operating data across pipeline, inbox, tasks, templates, billing, finance, companies,
-  job signals, requirements, or contact-intelligence review tables.
-- [x] Create a canonical shareable product/system brief at `docs/PRODUCT_SYSTEM_BRIEF.md` so any
-  future agent, AI tool, designer, operator, or business collaborator can quickly understand what
-  the whole software system is and what must stay updated.
+- [x] Browser-smoke 15 Wizmatch routes and 15 Growth routes with mocked authenticated sessions and
+  production-like Wizmatch object-stage pipeline data.
 - [ ] Log in with real Growth and Wizmatch users on localhost/live and manually confirm shared
   modules show the correct tenant data in both profiles once this branch is deployed to a
   production-like environment.

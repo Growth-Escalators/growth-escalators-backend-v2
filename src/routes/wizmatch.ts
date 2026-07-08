@@ -279,6 +279,20 @@ async function optionalWizmatchStatsQuery<T extends Record<string, unknown>>(
   }
 }
 
+async function optionalWizmatchValue<T>(
+  label: string,
+  load: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await load();
+  } catch (e) {
+    if (!isOptionalWizmatchSchemaError(e)) throw e;
+    logger.warn({ err: e }, `[wizmatch] optional data unavailable: ${label}`);
+    return fallback;
+  }
+}
+
 function firstString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -466,87 +480,93 @@ async function buildContactIntelligenceResult(tenantId: string, row: ContactInte
 }
 
 async function fetchPersistedContactIntelligence(tenantId: string, companyId: string) {
-  const [company, candidates, discoveryRuns] = await Promise.all([
-    pool.query(
-      `SELECT id,
-              qualification_tier,
-              qualification_score,
-              target_region,
-              is_it_staffing_fit,
-              status,
-              review_status,
-              review_action,
-              reviewed_by,
-              reviewed_at,
-              rejection_reason,
-              review_notes,
-              last_qualified_at,
-              last_discovered_at,
-              next_refresh_at,
-              cost_cents_total,
-              source_summary,
-              metadata
-       FROM wizmatch_company_intelligence
-       WHERE tenant_id = $1 AND company_id = $2
-       LIMIT 1`,
-      [tenantId, companyId],
-    ),
-    pool.query(
-      `SELECT id,
-              crm_contact_id,
-              name,
-              title,
-              email,
-              phone,
-              linkedin_url,
-              source,
-              source_url,
-              deliverability_status,
-              ranking_score,
-              relationship_score,
-              confidence_score,
-              status,
-              rejection_reason,
-              metadata
-       FROM wizmatch_contact_candidates
-       WHERE tenant_id = $1 AND company_id = $2
-       ORDER BY CASE status
-                  WHEN 'approved' THEN 0
-                  WHEN 'needs_review' THEN 1
-                  WHEN 'linked_to_crm' THEN 2
-                  WHEN 'new' THEN 3
-                  ELSE 4
-                END,
-                ranking_score DESC NULLS LAST,
-                created_at DESC
-       LIMIT 10`,
-      [tenantId, companyId],
-    ),
-    pool.query(
-      `SELECT id,
-              run_type,
-              source,
-              status,
-              cost_cents,
-              paid_provider,
-              started_at,
-              finished_at,
-              result_counts,
-              error_message,
-              created_at
-       FROM wizmatch_discovery_runs
-       WHERE tenant_id = $1 AND company_id = $2
-       ORDER BY created_at DESC
-       LIMIT 5`,
-      [tenantId, companyId],
-    ),
-  ]);
+  try {
+    const [company, candidates, discoveryRuns] = await Promise.all([
+      pool.query(
+        `SELECT id,
+                qualification_tier,
+                qualification_score,
+                target_region,
+                is_it_staffing_fit,
+                status,
+                review_status,
+                review_action,
+                reviewed_by,
+                reviewed_at,
+                rejection_reason,
+                review_notes,
+                last_qualified_at,
+                last_discovered_at,
+                next_refresh_at,
+                cost_cents_total,
+                source_summary,
+                metadata
+         FROM wizmatch_company_intelligence
+         WHERE tenant_id = $1 AND company_id = $2
+         LIMIT 1`,
+        [tenantId, companyId],
+      ),
+      pool.query(
+        `SELECT id,
+                crm_contact_id,
+                name,
+                title,
+                email,
+                phone,
+                linkedin_url,
+                source,
+                source_url,
+                deliverability_status,
+                ranking_score,
+                relationship_score,
+                confidence_score,
+                status,
+                rejection_reason,
+                metadata
+         FROM wizmatch_contact_candidates
+         WHERE tenant_id = $1 AND company_id = $2
+         ORDER BY CASE status
+                    WHEN 'approved' THEN 0
+                    WHEN 'needs_review' THEN 1
+                    WHEN 'linked_to_crm' THEN 2
+                    WHEN 'new' THEN 3
+                    ELSE 4
+                  END,
+                  ranking_score DESC NULLS LAST,
+                  created_at DESC
+         LIMIT 10`,
+        [tenantId, companyId],
+      ),
+      pool.query(
+        `SELECT id,
+                run_type,
+                source,
+                status,
+                cost_cents,
+                paid_provider,
+                started_at,
+                finished_at,
+                result_counts,
+                error_message,
+                created_at
+         FROM wizmatch_discovery_runs
+         WHERE tenant_id = $1 AND company_id = $2
+         ORDER BY created_at DESC
+         LIMIT 5`,
+        [tenantId, companyId],
+      ),
+    ]);
 
-  return {
-    company: company.rows[0] || null,
-    contactCandidates: (candidates.rows as PersistedContactCandidateRow[]).map(mapPersistedCandidate),
-    discoveryRuns: discoveryRuns.rows,
-  };
+    return {
+      company: company.rows[0] || null,
+      contactCandidates: (candidates.rows as PersistedContactCandidateRow[]).map(mapPersistedCandidate),
+      discoveryRuns: discoveryRuns.rows,
+    };
+  } catch (e) {
+    if (!isOptionalWizmatchSchemaError(e)) throw e;
+    logger.warn({ err: e }, '[wizmatch] persisted contact intelligence unavailable');
+    return { company: null, contactCandidates: [], discoveryRuns: [] };
+  }
 }
 
 async function withPersistedContactIntelligence(tenantId: string, item: Awaited<ReturnType<typeof buildContactIntelligenceResult>>) {
@@ -736,17 +756,19 @@ async function countPaidDiscoveryRunsInCooldown(
   companyId: string,
   cooldownDays: number,
 ) {
-  const result = await pool.query(
-    `SELECT COUNT(*)::int AS count
-     FROM wizmatch_discovery_runs
-     WHERE tenant_id = $1
-       AND company_id = $2
-       AND paid_provider = true
-       AND status IN ('queued', 'running', 'succeeded', 'partial')
-       AND created_at > NOW() - ($3::int * INTERVAL '1 day')`,
-    [tenantId, companyId, cooldownDays],
-  );
-  return numeric(result.rows[0]?.count);
+  return optionalWizmatchValue('paid discovery cooldown', async () => {
+    const result = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM wizmatch_discovery_runs
+       WHERE tenant_id = $1
+         AND company_id = $2
+         AND paid_provider = true
+         AND status IN ('queued', 'running', 'succeeded', 'partial')
+         AND created_at > NOW() - ($3::int * INTERVAL '1 day')`,
+      [tenantId, companyId, cooldownDays],
+    );
+    return numeric(result.rows[0]?.count);
+  }, 0);
 }
 
 async function buildContactDiscoveryInput(
@@ -1874,11 +1896,19 @@ async function buildReviewWorkbenchPayload(tenantId: string, limit: number) {
     baseMetrics,
     contactStats,
   ] = await Promise.all([
-    fetchContactIntelligenceCompanyRows(tenantId, limit),
-    fetchClientDiscoverySignals(tenantId, limit),
-    fetchCandidateIntelligenceInputs(tenantId, limit),
-    buildRequirementPriorityInputs(tenantId, limit),
-    fetchCommandCenterMetrics(tenantId),
+    optionalWizmatchValue('workbench contact intelligence companies', () => fetchContactIntelligenceCompanyRows(tenantId, limit), [] as ContactIntelligenceCompanyRow[]),
+    optionalWizmatchValue('workbench client discovery signals', () => fetchClientDiscoverySignals(tenantId, limit), [] as ClientDiscoveryInput[]),
+    optionalWizmatchValue('workbench candidate intelligence inputs', () => fetchCandidateIntelligenceInputs(tenantId, limit), [] as CandidateIntelligenceInput[]),
+    optionalWizmatchValue('workbench requirement priority inputs', () => buildRequirementPriorityInputs(tenantId, limit), [] as RequirementPriorityInput[]),
+    optionalWizmatchValue('workbench command center metrics', () => fetchCommandCenterMetrics(tenantId), {
+      activeSignals: 0,
+      prioritySignals: 0,
+      availableCandidates: 0,
+      openRequirements: 0,
+      activePlacements: 0,
+      pausedDomains: 0,
+      suppressedContacts: 0,
+    }),
     fetchOptionalContactIntelligenceRoiStats(tenantId),
   ]);
 

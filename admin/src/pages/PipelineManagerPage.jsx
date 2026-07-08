@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar.jsx';
 import { apiFetch } from '../lib/api.js';
+import { editableStageNames, normalizePipelineStages } from '../lib/pipelineStages.js';
+import { safeLower } from '../lib/safe.js';
 
 const COLORS = [
   { hex: '#F97316', label: 'Orange' },
@@ -16,7 +18,7 @@ const COLORS = [
 const DEFAULT_STAGES = ['New Lead', 'Contacted', 'Proposal Sent', 'Won', 'Lost'];
 
 function getStageType(name) {
-  const lc = (name ?? '').toLowerCase();
+  const lc = safeLower(name);
   if (lc.includes('won')) return 'won';
   if (lc.includes('lost')) return 'lost';
   return 'active';
@@ -287,14 +289,15 @@ function KanbanPreview({ stages, color }) {
 function PipelineEditor({ pipeline, onSaved, onCancel, stageConfigs, onOpenStageConfig }) {
   const [name, setName] = useState(pipeline.name);
   const [color, setColor] = useState(pipeline.color ?? '#F97316');
-  const [stages, setStages] = useState(Array.isArray(pipeline.stages) ? pipeline.stages : []);
+  const initialStages = editableStageNames(pipeline.normalizedStages || pipeline.stages);
+  const [stages, setStages] = useState(initialStages);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     setName(pipeline.name);
     setColor(pipeline.color ?? '#F97316');
-    setStages(Array.isArray(pipeline.stages) ? pipeline.stages : []);
+    setStages(editableStageNames(pipeline.normalizedStages || pipeline.stages));
     setError('');
   }, [pipeline.id]);
 
@@ -315,7 +318,7 @@ function PipelineEditor({ pipeline, onSaved, onCancel, stageConfigs, onOpenStage
     }
   }
 
-  const hasChanges = name !== pipeline.name || color !== (pipeline.color ?? '#F97316') || JSON.stringify(stages) !== JSON.stringify(pipeline.stages);
+  const hasChanges = name !== pipeline.name || color !== (pipeline.color ?? '#F97316') || JSON.stringify(stages) !== JSON.stringify(editableStageNames(pipeline.normalizedStages || pipeline.stages));
 
   return (
     <div className="flex flex-col h-full">
@@ -403,7 +406,7 @@ function NewPipelineModal({ onCreated, onClose }) {
     if (!name.trim()) { setError('Pipeline name is required'); return; }
     setSaving(true);
     setError('');
-    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now();
+    const slug = safeLower(name).trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now();
     const result = await apiFetch('/api/pipelines', {
       method: 'POST',
       body: JSON.stringify({ name: name.trim(), slug, stages, color }),
@@ -689,7 +692,7 @@ export default function PipelineManagerPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-slate-800 truncate">{p.name}</p>
                       <p className="text-xs text-slate-400">
-                        {Array.isArray(p.stages) ? p.stages.length : 0} stages
+                        {normalizePipelineStages(p.normalizedStages || p.stages).length} stages
                         {p.dealCount > 0 && ` · ${p.dealCount} deals`}
                       </p>
                     </div>

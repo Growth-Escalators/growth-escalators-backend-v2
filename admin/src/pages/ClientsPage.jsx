@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar.jsx';
 import { apiFetch } from '../lib/api.js';
+import { safeLower } from '../lib/safe.js';
 import {
   Briefcase, Search, Plus, AlertTriangle, TrendingUp, Trophy,
   Loader2, Building2,
@@ -191,10 +192,10 @@ export default function ClientsPage() {
   }, [statusFilter]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = safeLower(search).trim();
     if (!q) return clients;
     return clients.filter((c) => {
-      const haystack = [c.name, c.primaryContactName].filter(Boolean).join(' ').toLowerCase();
+      const haystack = [c.name, c.primaryContactName].map(safeLower).join(' ');
       return haystack.includes(q);
     });
   }, [clients, search]);

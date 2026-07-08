@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import { apiFetch } from '../lib/api.js';
+import { safeLower } from '../lib/safe.js';
 import {
   TrendingUp, TrendingDown, BarChart2, Globe, Search, Zap, AlertCircle,
   ChevronDown, RefreshCw, ExternalLink, ArrowUp, ArrowDown, Minus,
@@ -80,7 +81,7 @@ function posColor(pos) {
 }
 
 function alertBadge(type) {
-  const t = (type ?? '').toLowerCase();
+  const t = safeLower(type);
   if (t.includes('ranking_drop') || t.includes('rank'))  return 'bg-red-100 text-red-700';
   if (t.includes('traffic_drop') || t.includes('traffic')) return 'bg-orange-100 text-orange-700';
   if (t.includes('ctr'))        return 'bg-yellow-100 text-yellow-700';
@@ -227,7 +228,7 @@ function KeywordsTab({ keywords, loading }) {
 
   const filtered = (keywords ?? [])
     .filter(k => clientFilter === 'all' || k.client_domain === clientFilter)
-    .filter(k => !search || k.keyword?.toLowerCase().includes(search.toLowerCase()))
+    .filter(k => !search || safeLower(k.keyword).includes(safeLower(search)))
     .sort((a, b) => {
       const posA = Number(a.position ?? 999);
       const posB = Number(b.position ?? 999);
@@ -421,7 +422,7 @@ function ContentGapsTab() {
   }
 
   const filtered = filter
-    ? gaps.filter(g => g.project_name?.toLowerCase().includes(filter.toLowerCase()) || g.target_keyword?.toLowerCase().includes(filter.toLowerCase()))
+    ? gaps.filter(g => safeLower(g.project_name).includes(safeLower(filter)) || safeLower(g.target_keyword).includes(safeLower(filter)))
     : gaps;
 
   return (
@@ -511,7 +512,7 @@ function BacklinksTab() {
   }
 
   const filtered = filter
-    ? backlinks.filter(b => b.source_url?.toLowerCase().includes(filter.toLowerCase()) || b.anchor_text?.toLowerCase().includes(filter.toLowerCase()) || b.project_name?.toLowerCase().includes(filter.toLowerCase()))
+    ? backlinks.filter(b => safeLower(b.source_url).includes(safeLower(filter)) || safeLower(b.anchor_text).includes(safeLower(filter)) || safeLower(b.project_name).includes(safeLower(filter)))
     : backlinks;
 
   return (

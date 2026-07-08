@@ -3,6 +3,7 @@ import Sidebar from '../components/Sidebar.jsx';
 import PagePostsSection from '../components/PagePostsSection.jsx';
 import { apiFetch } from '../lib/api.js';
 import { getAuthToken } from '../lib/auth.js';
+import { safeLower } from '../lib/safe.js';
 import { Building2, FileText, RefreshCw, AlertCircle, ShieldCheck } from 'lucide-react';
 
 function maskToken(token) {
@@ -12,7 +13,7 @@ function maskToken(token) {
 }
 
 function VerificationBadge({ status }) {
-  const s = (status || '').toLowerCase();
+  const s = safeLower(status);
   const styles = {
     verified: 'bg-green-100 text-green-700',
     not_verified: 'bg-slate-100 text-slate-500',

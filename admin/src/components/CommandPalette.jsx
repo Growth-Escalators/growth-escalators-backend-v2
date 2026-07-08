@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { GROUP_LABELS } from './navEntries.js';
+import { safeLower } from '../lib/safe.js';
 
 // Cmd+K / Ctrl+K command palette. Filters the visible nav entries by
 // case-insensitive substring match on label, shows top 8, supports
@@ -27,9 +28,9 @@ export default function CommandPalette({ open, onClose, entries }) {
   }, [open]);
 
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = safeLower(query).trim();
     const filtered = q
-      ? entries.filter(e => e.label.toLowerCase().includes(q))
+      ? entries.filter(e => safeLower(e.label).includes(q))
       : entries;
     return filtered.slice(0, 8);
   }, [entries, query]);

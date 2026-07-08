@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import ContactSlideIn from '../components/ContactSlideIn.jsx';
 import { apiFetch } from '../lib/api.js';
+import { safeLower, safeText } from '../lib/safe.js';
 import { MessageSquare, Send, Search, Check, CheckCheck, Image, FileText, Phone, User, ArrowLeft, Pencil, Mail } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -218,9 +219,10 @@ export default function InboxPage() {
     } catch { /* template send failed */ }
   }
 
-  const filtered = conversations.filter(c =>
-    !search || (c.contactName || '').toLowerCase().includes(search.toLowerCase()) || (c.contactPhone || '').includes(search) || (c.contactEmail || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = conversations.filter(c => {
+    const q = safeLower(search);
+    return !q || safeLower(c.contactName).includes(q) || safeText(c.contactPhone).includes(search) || safeLower(c.contactEmail).includes(q);
+  });
   const totalUnread = conversations.reduce((sum, c) => sum + Number(c.unreadCount || 0), 0);
 
   return (

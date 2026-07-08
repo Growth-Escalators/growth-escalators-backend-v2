@@ -170,6 +170,13 @@ function parseProviderCalls(metadata: unknown): WizmatchProviderCallCounts {
   });
 }
 
+function isMissingOptionalCostGuardTable(error: unknown): boolean {
+  const pgError = error as { code?: string; message?: string } | null;
+  if (!pgError) return false;
+  return pgError.code === '42P01'
+    || /relation "wizmatch_discovery_runs" does not exist/i.test(pgError.message || '');
+}
+
 export async function fetchWizmatchCostGuardUsage(
   pool: Pool,
   tenantId: string,
@@ -178,14 +185,20 @@ export async function fetchWizmatchCostGuardUsage(
 ): Promise<WizmatchCostGuardUsage> {
   const monthStart = sameMonthStart(now);
   const dayStart = sameDayStart(now);
-  const result = await pool.query(
-    `SELECT cost_cents, requested_by, metadata, created_at
-     FROM wizmatch_discovery_runs
-     WHERE tenant_id = $1
-       AND paid_provider = true
-       AND created_at >= $2`,
-    [tenantId, monthStart],
-  );
+  let result: { rows: Array<{ cost_cents: unknown; requested_by: unknown; metadata: unknown; created_at: string | number | Date }> };
+  try {
+    result = await pool.query(
+      `SELECT cost_cents, requested_by, metadata, created_at
+       FROM wizmatch_discovery_runs
+       WHERE tenant_id = $1
+         AND paid_provider = true
+         AND created_at >= $2`,
+      [tenantId, monthStart],
+    );
+  } catch (error) {
+    if (!isMissingOptionalCostGuardTable(error)) throw error;
+    return emptyWizmatchCostGuardUsage();
+  }
 
   const usage = emptyWizmatchCostGuardUsage();
   for (const row of result.rows) {

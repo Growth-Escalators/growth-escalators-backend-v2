@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { eq, and, asc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { db, pool, pipelines, deals, contacts, contactChannels } from '../db/index';
+import { buildPipelineStageColumns, normalizePipelineStages } from '../services/pipelineStages';
 
 const router = Router();
 
@@ -177,7 +178,7 @@ router.get('/', async (req, res) => {
     }
   }
 
-  const enriched = rows.map((p) => ({ ...p, dealCount: countMap[p.id] ?? 0 }));
+  const enriched = rows.map((p) => ({ ...p, normalizedStages: normalizePipelineStages(p.stages), dealCount: countMap[p.id] ?? 0 }));
   res.json(enriched);
   } catch (e: unknown) {
     logger.error('[pipelines] GET / error:', e);
@@ -439,7 +440,7 @@ router.get('/:id/deals', async (req, res) => {
   }
 
   const pipeline = pipelineRows[0];
-  const stageList = (pipeline.stages as string[]) ?? [];
+  const normalizedStages = normalizePipelineStages(pipeline.stages);
 
   // Get all deals for this pipeline
   const conditions = [
@@ -457,8 +458,8 @@ router.get('/:id/deals', async (req, res) => {
     .where(and(...conditions));
 
   if (dealRows.length === 0) {
-    const emptyStages = stageList.map((s) => ({ stageName: s, deals: [], totalValue: 0 }));
-    res.json({ pipeline, stages: emptyStages });
+    const emptyStages = buildPipelineStageColumns(pipeline.stages, []);
+    res.json({ pipeline: { ...pipeline, normalizedStages }, stages: emptyStages });
     return;
   }
 
@@ -500,30 +501,9 @@ router.get('/:id/deals', async (req, res) => {
     };
   });
 
-  // Group by stage in the pipeline's stage order
-  const stageMap: Record<string, typeof enrichedDeals> = {};
-  for (const d of enrichedDeals) {
-    const s = d.stage ?? 'Unknown';
-    if (!stageMap[s]) stageMap[s] = [];
-    stageMap[s].push(d);
-  }
+  const stages = buildPipelineStageColumns(pipeline.stages, enrichedDeals);
 
-  const stages = stageList.map((stageName) => {
-    const stageDeals = stageMap[stageName] ?? [];
-    const totalValue = stageDeals.reduce((sum, d) => sum + (d.dealValue ?? 0), 0);
-    return { stageName, deals: stageDeals, totalValue };
-  });
-
-  // Add any deals in unknown stages at the end
-  const knownStages = new Set(stageList);
-  for (const [stageName, stageDeals] of Object.entries(stageMap)) {
-    if (!knownStages.has(stageName)) {
-      const totalValue = stageDeals.reduce((sum, d) => sum + (d.dealValue ?? 0), 0);
-      stages.push({ stageName, deals: stageDeals, totalValue });
-    }
-  }
-
-  res.json({ pipeline, stages });
+  res.json({ pipeline: { ...pipeline, normalizedStages }, stages });
   } catch (e: unknown) {
     logger.error('[pipelines] GET /:id/deals error:', e);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
