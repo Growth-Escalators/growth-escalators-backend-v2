@@ -5,6 +5,43 @@ Format: `## YYYY-MM-DD — <title> — <agent>` then a few bullets (what changed
 
 ---
 
+## 2026-07-10 — Step 33: Wizmatch demand-sourcing pipeline unblocked + new sources — Claude — DONE
+
+Turned the "fix scrapers" ask into a minimum-cost demand-sourcing pipeline. Plan +
+asset in `docs/wizmatch/DEMAND-SOURCING-PLAN.md`.
+
+**Keystone fix (PR #30, deployed):** the worker's score/enrich/match crons AND CI scrapers POST to
+the six `requireInternalToken` endpoints with only `x-internal-secret`, but the whole `/api/wizmatch`
+router was behind the JWT `requireAuth` wall → every internal call 401'd, stalling the ENTIRE
+pipeline (not just Dice). Carved those six POST routes past the JWT wall (`index.ts`); hardened
+`requireInternalToken` to `crypto.timingSafeEqual`. Aligned CI token: set GH secret
+`INTERNAL_API_TOKEN` = server `OUTREACH_INTERNAL_SECRET`. **Validated:** Dice now ingests
+(`{inserted:78}`).
+
+**New sources (this branch):**
+- RemoteOK importer (`wizmatchRemoteOkImporter.ts`) — daily cron, $0 free JSON. **Validated live: 47
+  signals ingested.**
+- TheirStack importer (`wizmatchTheirStackImporter.ts`) — weekly cron, **dormant until
+  `THEIRSTACK_API_KEY` set** (India/Naukri demand at $0, 200 free credits/mo). Field mapping is
+  defensive — verify against a live payload on first run.
+- Shared `wizmatchIngestClient.postSignals()` (reuses the ingest endpoint's dedup + company resolve).
+- C2C scorer: `wizmatchScoring.ts` now scans job **title + description** (not just keywords) and
+  flags `c2cFriendly` (corp-to-corp / 1099 / visa-open) without changing the score>=7 gate. +3 tests.
+
+**Prod data mutation (count-first, transactional):** seeded **26 ATS boards** (24 Greenhouse + 2
+Lever, all validated to return jobs) into `wizmatch_companies` via
+`scripts/onboarding/wizmatch-seed-ats-boards.ts` → the existing ATS poller (daily 6 AM IST) harvests
+them. Also earlier (Step 32 follow-up): reset wizmatch Kanishk password + seeded 3 templates.
+
+**State:** prod now has Dice (78) + RemoteOK (47) demand signals; ATS boards harvest at 6 AM.
+Contact discovery (free-first pattern-guess + Reacher, paid gated) auto-runs on score>=7 via the
+hourly enrich cron. `npm run build` + `npm test` 278/278 green.
+
+**Next:** user provides `THEIRSTACK_API_KEY` to wake the India importer; extend the ATS board seed
+list with real client-type companies.
+
+---
+
 ## 2026-07-10 — Step 32: Wizmatch go-live prep (access, templates, scraper truth) — Claude — DONE
 
 **Decisions:** outreach stays manual (sending gated off); demand sourcing "fix scrapers first".

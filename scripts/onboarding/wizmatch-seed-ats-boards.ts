@@ -1,0 +1,90 @@
+#!/usr/bin/env npx tsx
+/**
+ * Seed a starter set of public ATS boards into wizmatch_companies so the existing
+ * ATS poller (wizmatchAtsPoller.ts, daily 6 AM IST cron) has companies to harvest.
+ * Idempotent on (tenant_id, ats_type, ats_slug). Every slug below was validated
+ * live against the public API and returns real open jobs.
+ *
+ * Extend the BOARDS list and re-run to add more. Run:
+ *   railway run --service Postgres bash -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" npx tsx scripts/onboarding/wizmatch-seed-ats-boards.ts'
+ */
+import dotenv from 'dotenv'; dotenv.config();
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 20_000,
+});
+
+// [name, domain, ats_type, ats_slug]
+const BOARDS: [string, string, string, string][] = [
+  ['Airbnb', 'airbnb.com', 'greenhouse', 'airbnb'],
+  ['Stripe', 'stripe.com', 'greenhouse', 'stripe'],
+  ['Databricks', 'databricks.com', 'greenhouse', 'databricks'],
+  ['Dropbox', 'dropbox.com', 'greenhouse', 'dropbox'],
+  ['Coinbase', 'coinbase.com', 'greenhouse', 'coinbase'],
+  ['Robinhood', 'robinhood.com', 'greenhouse', 'robinhood'],
+  ['Figma', 'figma.com', 'greenhouse', 'figma'],
+  ['Brex', 'brex.com', 'greenhouse', 'brex'],
+  ['Discord', 'discord.com', 'greenhouse', 'discord'],
+  ['Reddit', 'reddit.com', 'greenhouse', 'reddit'],
+  ['Instacart', 'instacart.com', 'greenhouse', 'instacart'],
+  ['Gusto', 'gusto.com', 'greenhouse', 'gusto'],
+  ['Asana', 'asana.com', 'greenhouse', 'asana'],
+  ['Samsara', 'samsara.com', 'greenhouse', 'samsara'],
+  ['Affirm', 'affirm.com', 'greenhouse', 'affirm'],
+  ['Flexport', 'flexport.com', 'greenhouse', 'flexport'],
+  ['Lyft', 'lyft.com', 'greenhouse', 'lyft'],
+  ['Twitch', 'twitch.tv', 'greenhouse', 'twitch'],
+  ['Cloudflare', 'cloudflare.com', 'greenhouse', 'cloudflare'],
+  ['MongoDB', 'mongodb.com', 'greenhouse', 'mongodb'],
+  ['Datadog', 'datadoghq.com', 'greenhouse', 'datadog'],
+  ['GitLab', 'gitlab.com', 'greenhouse', 'gitlab'],
+  ['Elastic', 'elastic.co', 'greenhouse', 'elastic'],
+  ['Okta', 'okta.com', 'greenhouse', 'okta'],
+  ['Spotify', 'spotify.com', 'lever', 'spotify'],
+  ['Veeva Systems', 'veeva.com', 'lever', 'veeva'],
+];
+
+async function main() {
+  if (!process.env.DATABASE_URL) { console.error('DATABASE_URL not set'); process.exit(1); }
+  const client = await pool.connect();
+  try {
+    const wt = await client.query(`SELECT id FROM tenants WHERE slug='wizmatch'`);
+    if (!wt.rowCount) throw new Error('wizmatch tenant not found');
+    const tenantId = wt.rows[0].id;
+
+    const before = await client.query(
+      `SELECT count(*) AS n FROM wizmatch_companies WHERE tenant_id=$1 AND ats_slug IS NOT NULL`, [tenantId]);
+    console.log(`ATS-board companies before: ${before.rows[0].n}`);
+
+    await client.query('BEGIN');
+    let inserted = 0;
+    for (const [name, domain, atsType, atsSlug] of BOARDS) {
+      const r = await client.query(
+        `INSERT INTO wizmatch_companies (tenant_id, name, domain, ats_type, ats_slug, industry, country)
+         SELECT $1,$2,$3,$4,$5,'Technology','US'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM wizmatch_companies WHERE tenant_id=$1 AND ats_type=$4 AND ats_slug=$5
+         ) RETURNING id`,
+        [tenantId, name, domain, atsType, atsSlug]);
+      if (r.rowCount) inserted += 1;
+    }
+    await client.query('COMMIT');
+
+    const after = await client.query(
+      `SELECT ats_type, count(*) AS n FROM wizmatch_companies WHERE tenant_id=$1 AND ats_slug IS NOT NULL GROUP BY ats_type`, [tenantId]);
+    console.log(`Inserted ${inserted} new ATS-board companies.`);
+    console.table(after.rows);
+    console.log('The ATS poller (daily 6 AM IST) will harvest these into job signals automatically.');
+  } catch (e: any) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('FAILED, rolled back:', e?.message || e);
+    process.exit(1);
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+main();
