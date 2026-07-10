@@ -3328,7 +3328,7 @@ router.post('/signals/:id/score', requireInternalToken, async (req: Request, res
   const row = result.rows[0];
   const daysOpen = row.days_open || Math.floor((Date.now() - new Date(row.first_seen_at).getTime()) / 86400000);
 
-  const { score, region, breakdown, reasoning, urgencyLevel, strugglingScore } = scoreSignal({
+  const { score, region, breakdown, reasoning, urgencyLevel, strugglingScore, c2cFriendly } = scoreSignal({
     daysOpen,
     repostCount: row.repost_count || 0,
     companyVolumeCount: row.company_volume || 0,
@@ -3336,13 +3336,15 @@ router.post('/signals/:id/score', requireInternalToken, async (req: Request, res
     keywords: row.keywords,
     h1bSponsorCount: row.h1b_sponsor_count || 0,
     location: row.location, // drives India-vs-US rubric selection
+    jobTitle: row.job_title, // scanned for contract/C2C/urgency language
+    rawText: row.raw_text,   // scanned for contract/C2C/urgency language
   });
 
   await pool.query(
     `UPDATE wizmatch_job_signals
      SET score = $3, score_breakdown = $4::jsonb, status = 'scored', days_open = $5
      WHERE id = $1 AND tenant_id = $2`,
-    [signalId, tenantId, score, JSON.stringify({ ...breakdown, region, reasoning, urgencyLevel, strugglingScore }), daysOpen],
+    [signalId, tenantId, score, JSON.stringify({ ...breakdown, region, reasoning, urgencyLevel, strugglingScore, c2cFriendly }), daysOpen],
   );
 
   // Slack alert for high scores

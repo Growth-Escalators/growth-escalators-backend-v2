@@ -1546,6 +1546,38 @@ if (process.env.DISABLE_BACKGROUND_JOBS !== 'true' && process.env.WIZMATCH_TENAN
   }), { timezone: 'UTC' });
   console.log('[cron] Wizmatch LCA importer scheduled — weekly Sunday 10 PM IST');
 
+  // RemoteOK importer — daily 7 AM IST (1:30 UTC). Free JSON feed, remote tech/contract roles.
+  cron.schedule('30 1 * * *', () => safeCron('Wizmatch RemoteOK Importer', async () => {
+    const { importRemoteOkJobs } = await import('./services/wizmatchRemoteOkImporter');
+    const result = await importRemoteOkJobs();
+    if (result.inserted > 0 && WIZMATCH_LEADS_CHANNEL) {
+      const { sendSlackMessage } = await import('./services/slackService');
+      await sendSlackMessage(WIZMATCH_LEADS_CHANNEL,
+        `🌐 RemoteOK: ${result.inserted} new remote job signals`,
+        undefined,
+        { allowDuringPause: true }, // client-acquisition demand signal
+      ).catch(() => {});
+    }
+  }), { timezone: 'UTC' });
+  console.log('[cron] Wizmatch RemoteOK importer scheduled — daily 7 AM IST');
+
+  // TheirStack importer — weekly Monday 7 AM IST (1:30 UTC). India demand incl. Naukri.
+  // Dormant unless THEIRSTACK_API_KEY is set; weekly + tight cap respects the free tier.
+  cron.schedule('30 1 * * 1', () => safeCron('Wizmatch TheirStack Importer', async () => {
+    const { importTheirStackJobs, isTheirStackEnabled } = await import('./services/wizmatchTheirStackImporter');
+    if (!isTheirStackEnabled()) return;
+    const result = await importTheirStackJobs();
+    if (result.inserted > 0 && WIZMATCH_LEADS_CHANNEL) {
+      const { sendSlackMessage } = await import('./services/slackService');
+      await sendSlackMessage(WIZMATCH_LEADS_CHANNEL,
+        `🇮🇳 TheirStack: ${result.inserted} new India job signals`,
+        undefined,
+        { allowDuringPause: true }, // client-acquisition demand signal
+      ).catch(() => {});
+    }
+  }), { timezone: 'UTC' });
+  console.log('[cron] Wizmatch TheirStack importer scheduled — weekly Monday 7 AM IST (dormant without key)');
+
   // Daily digest — 6 PM IST (12:30 UTC)
   cron.schedule('30 12 * * 1-6', () => safeCron('Wizmatch Daily Digest', async () => {
     const { WIZMATCH_DAILY_CHANNEL } = await import('./config/constants');
