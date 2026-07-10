@@ -34,6 +34,35 @@ describe('Wizmatch scoring — hiring-urgency ("struggling to hire") signal', ()
     expect(r.strugglingScore).toBe(3);
   });
 
+  it('detects C2C-friendliness from the job TITLE (not just keywords/employmentType)', () => {
+    const r = scoreSignal({
+      daysOpen: 1, repostCount: 0, companyVolumeCount: 1,
+      employmentType: 'FTE', keywords: [], h1bSponsorCount: 0, region: 'us',
+      jobTitle: 'Contract Java Developer (C2C)', rawText: null,
+    });
+    expect(r.c2cFriendly).toBe(true);
+    expect(r.breakdown.keywords).toBe(2); // contract kw now found in the title
+    expect(r.reasoning).toContain('C2C / offshore-friendly');
+  });
+
+  it('detects C2C-friendliness from the DESCRIPTION / visa language', () => {
+    const r = scoreSignal({
+      daysOpen: 1, repostCount: 0, companyVolumeCount: 1,
+      employmentType: 'FTE', keywords: ['java'], h1bSponsorCount: 0, region: 'us',
+      jobTitle: 'Backend Engineer', rawText: 'Open to corp to corp. Any visa welcome (GC/USC/H1B).',
+    });
+    expect(r.c2cFriendly).toBe(true);
+  });
+
+  it('leaves c2cFriendly false for a plain FTE role with no contract/visa language', () => {
+    const r = scoreSignal({
+      daysOpen: 1, repostCount: 0, companyVolumeCount: 1,
+      employmentType: 'Full-time', keywords: ['java'], h1bSponsorCount: 0, region: 'us',
+      jobTitle: 'Senior Software Engineer', rawText: 'Join our team building great products.',
+    });
+    expect(r.c2cFriendly).toBe(false);
+  });
+
   it('does not inflate the numeric score even when urgency language is present', () => {
     const withUrgency = scoreSignal({
       // 'actively hiring' is an urgency marker but NOT one of the scoring keyword lists,

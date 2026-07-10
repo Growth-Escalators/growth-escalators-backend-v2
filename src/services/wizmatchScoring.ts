@@ -22,6 +22,10 @@ interface SignalInput {
   h1bSponsorCount: number;
   region?: Region;
   location?: string | null;
+  /** Job title — scanned for contract/C2C/urgency keywords. */
+  jobTitle?: string | null;
+  /** Raw posting text / description — scanned for contract/C2C/urgency keywords. */
+  rawText?: string | null;
 }
 
 export type HiringUrgency = 'high' | 'medium' | 'low';
@@ -35,6 +39,8 @@ export interface ScoreResult {
   urgencyLevel: HiringUrgency;
   /** Points behind urgencyLevel: stale days-open + reposts + volume + urgency language. */
   strugglingScore: number;
+  /** Posting looks open to corp-to-corp / offshore vendors (visa-open or explicit C2C language). */
+  c2cFriendly: boolean;
 }
 
 // Language that signals a company is struggling / urgently needs to fill roles.
@@ -49,6 +55,16 @@ const URGENCY_KEYWORDS = [
 const US_CONTRACT_KEYWORDS = [
   'w2', 'c2c', 'corp-to-corp', 'contract', 'contract-to-hire', '6-month',
   '6 month', '12-month', 'contractor', '1099', 'temp', 'temporary',
+];
+
+// Strong offshore / C2C-friendly markers — explicit corp-to-corp language or
+// visa openness. Postings naming multiple visa classes or "any visa" are the
+// highest-intent offshore-vendor signals. Used only to flag c2cFriendly (surfaces
+// WHY a signal is worth pursuing); does not change the numeric score/gate.
+const C2C_MARKERS = [
+  'c2c', 'corp-to-corp', 'corp to corp', 'corptocorp', '1099', 'independent contractor',
+  'w2 or c2c', 'any visa', 'all visa', 'no visa restriction', 'gc/usc', 'gc / usc',
+  'ead', 'opt', 'visa independent',
 ];
 
 // India contract / urgency signals
@@ -81,7 +97,12 @@ export function detectRegion(location?: string | null): Region {
 
 export function scoreSignal(input: SignalInput): ScoreResult {
   const region: Region = input.region ?? detectRegion(input.location);
-  const allText = [input.employmentType ?? '', ...(input.keywords ?? [])].join(' ').toLowerCase();
+  const allText = [
+    input.employmentType ?? '',
+    input.jobTitle ?? '',
+    input.rawText ?? '',
+    ...(input.keywords ?? []),
+  ].join(' ').toLowerCase();
 
   const breakdown: Record<string, number> = {};
   const reasons: string[] = [];
@@ -127,7 +148,13 @@ export function scoreSignal(input: SignalInput): ScoreResult {
   if (hasUrgencyLanguage) reasons.push('urgent/immediate hiring language');
   if (urgencyLevel === 'high') reasons.push('strong "struggling to hire" signal');
 
+  // C2C-friendliness: explicit corp-to-corp/visa-open language anywhere in the
+  // posting, or (US) any contract keyword hit. Surfaces offshore-vendor fit.
+  const c2cFriendly =
+    C2C_MARKERS.some((kw) => allText.includes(kw)) || (region === 'us' && breakdown.keywords > 0);
+  if (c2cFriendly) reasons.push('C2C / offshore-friendly');
+
   const reasoning = reasons.length > 0 ? reasons.join(', ') : 'low priority signal';
 
-  return { score, region, breakdown, reasoning, urgencyLevel, strugglingScore };
+  return { score, region, breakdown, reasoning, urgencyLevel, strugglingScore, c2cFriendly };
 }
