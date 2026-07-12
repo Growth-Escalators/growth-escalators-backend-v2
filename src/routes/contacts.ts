@@ -1,7 +1,7 @@
 import logger from '../utils/logger';
 import { Router } from 'express';
 import { eq, and, desc, ilike, or, gte, sql } from 'drizzle-orm';
-import { db, contacts, contactChannels, sequences, sequenceEnrolments, contactNotes, wizmatchCandidates } from '../db/index';
+import { db, contacts, contactChannels, sequences, sequenceEnrolments, contactNotes, wizmatchCandidates, wizmatchContactCandidates, wizmatchCompanies, wizmatchCompanyIntelligence } from '../db/index';
 
 const router = Router();
 
@@ -317,7 +317,31 @@ router.get('/:id', async (req, res) => {
   // URL, visa status, rate) that the generic contacts table doesn't carry.
   const candidateRows = await db.select().from(wizmatchCandidates).where(eq(wizmatchCandidates.contactId, id)).limit(1);
 
-  res.json({ contact: contactRows[0], channels, wizmatchCandidate: candidateRows[0] ?? null });
+  // A Client Lead contact (a company decision-maker found via Contact Intelligence)
+  // has a parallel row here — title, role, discovery confidence — plus direct FKs to
+  // the company and its qualification snapshot, so one lookup chain gets us all three.
+  const contactCandidateRows = await db.select().from(wizmatchContactCandidates).where(eq(wizmatchContactCandidates.crmContactId, id)).limit(1);
+  const contactCandidate = contactCandidateRows[0] ?? null;
+
+  let wizmatchCompany = null;
+  let wizmatchCompanyIntel = null;
+  if (contactCandidate) {
+    const companyRows = await db.select().from(wizmatchCompanies).where(eq(wizmatchCompanies.id, contactCandidate.companyId)).limit(1);
+    wizmatchCompany = companyRows[0] ?? null;
+    if (contactCandidate.companyIntelligenceId) {
+      const intelRows = await db.select().from(wizmatchCompanyIntelligence).where(eq(wizmatchCompanyIntelligence.id, contactCandidate.companyIntelligenceId)).limit(1);
+      wizmatchCompanyIntel = intelRows[0] ?? null;
+    }
+  }
+
+  res.json({
+    contact: contactRows[0],
+    channels,
+    wizmatchCandidate: candidateRows[0] ?? null,
+    wizmatchContactCandidate: contactCandidate,
+    wizmatchCompany,
+    wizmatchCompanyIntelligence: wizmatchCompanyIntel,
+  });
   } catch (e: unknown) {
     logger.error('[contacts] GET /:id error:', e);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });

@@ -37,6 +37,11 @@ function formatDateTime(dateStr) {
   });
 }
 
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 // A handful of source slugs read oddly when title-cased word-by-word
 // (acronyms, brand names) — override those, fall back to Title Case for the rest.
 const SOURCE_LABEL_OVERRIDES = {
@@ -189,6 +194,9 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
   const [activeTab, setActiveTab] = useState('details');
   const [channels, setChannels] = useState([]);
   const [wizmatchCandidate, setWizmatchCandidate] = useState(null);
+  const [wizmatchContactCandidate, setWizmatchContactCandidate] = useState(null);
+  const [wizmatchCompany, setWizmatchCompany] = useState(null);
+  const [wizmatchCompanyIntelligence, setWizmatchCompanyIntelligence] = useState(null);
   const [deals, setDeals] = useState([]);
   const [conversation, setConversation] = useState([]);
   const [notes, setNotes] = useState([]);
@@ -210,6 +218,9 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
       if (d?.contact) setContact((prev) => ({ ...prev, ...d.contact }));
       if (d?.channels) setChannels(d.channels);
       setWizmatchCandidate(d?.wizmatchCandidate ?? null);
+      setWizmatchContactCandidate(d?.wizmatchContactCandidate ?? null);
+      setWizmatchCompany(d?.wizmatchCompany ?? null);
+      setWizmatchCompanyIntelligence(d?.wizmatchCompanyIntelligence ?? null);
     });
     apiFetch(`/api/deals?contactId=${id}&limit=20`).then((d) => {
       if (d?.deals) setDeals(d.deals);
@@ -490,7 +501,7 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
               {wizmatchCandidate && (
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Candidate Info</h3>
-                  {(wizmatchCandidate.githubUrl || wizmatchCandidate.linkedinUrl) && (
+                  {(wizmatchCandidate.githubUrl || wizmatchCandidate.linkedinUrl || wizmatchCandidate.resumeUrl) && (
                     <div className="flex flex-wrap gap-3">
                       {wizmatchCandidate.githubUrl && (
                         <a
@@ -512,6 +523,16 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
                           LinkedIn ↗
                         </a>
                       )}
+                      {wizmatchCandidate.resumeUrl && (
+                        <a
+                          href={wizmatchCandidate.resumeUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm text-primary-600 hover:underline"
+                        >
+                          Resume ↗
+                        </a>
+                      )}
                     </div>
                   )}
                   {wizmatchCandidate.skills?.length > 0 && (
@@ -531,8 +552,103 @@ export default function ContactSlideIn({ contact: initialContact, onClose, onUpd
                     {wizmatchCandidate.availabilityStatus && (
                       <div><span className="text-xs text-neutral-400 block">Availability</span>{wizmatchCandidate.availabilityStatus}</div>
                     )}
+                    {wizmatchCandidate.availabilityDate && (
+                      <div><span className="text-xs text-neutral-400 block">Available from</span>{formatDate(wizmatchCandidate.availabilityDate)}</div>
+                    )}
                     {wizmatchCandidate.rateHourly != null && (
                       <div><span className="text-xs text-neutral-400 block">Rate</span>{wizmatchCandidate.rateCurrency ?? 'USD'} {wizmatchCandidate.rateHourly}/hr</div>
+                    )}
+                    {wizmatchCandidate.matchScore != null && (
+                      <div>
+                        <span className="text-xs text-neutral-400 block">Match score (at intake)</span>
+                        {wizmatchCandidate.matchScore}/100
+                        {wizmatchCandidate.createdAt && <span className="text-xs text-neutral-400"> · {formatDate(wizmatchCandidate.createdAt)}</span>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {wizmatchContactCandidate && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Client Lead Info</h3>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {wizmatchContactCandidate.title && (
+                      <div><span className="text-xs text-neutral-400 block">Title</span>{wizmatchContactCandidate.title}</div>
+                    )}
+                    {wizmatchContactCandidate.roleCategory && (
+                      <div><span className="text-xs text-neutral-400 block">Role category</span>{wizmatchContactCandidate.roleCategory}</div>
+                    )}
+                    {wizmatchContactCandidate.region && (
+                      <div><span className="text-xs text-neutral-400 block">Region</span>{wizmatchContactCandidate.region}</div>
+                    )}
+                    {wizmatchContactCandidate.deliverabilityStatus && (
+                      <div><span className="text-xs text-neutral-400 block">Deliverability</span>{wizmatchContactCandidate.deliverabilityStatus}</div>
+                    )}
+                    {wizmatchContactCandidate.confidenceScore != null && (
+                      <div><span className="text-xs text-neutral-400 block">Confidence</span>{wizmatchContactCandidate.confidenceScore}/100</div>
+                    )}
+                    {wizmatchContactCandidate.source && (
+                      <div>
+                        <span className="text-xs text-neutral-400 block">Source</span>
+                        {wizmatchContactCandidate.sourceUrl ? (
+                          <a href={wizmatchContactCandidate.sourceUrl} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">
+                            {formatSourceLabel(wizmatchContactCandidate.source)} ↗
+                          </a>
+                        ) : formatSourceLabel(wizmatchContactCandidate.source)}
+                      </div>
+                    )}
+                  </div>
+                  {wizmatchContactCandidate.status === 'rejected' && wizmatchContactCandidate.rejectionReason && (
+                    <div className="text-xs px-2 py-1.5 rounded-md bg-danger-50 text-danger-700">
+                      Rejected: {wizmatchContactCandidate.rejectionReason}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {wizmatchCompany && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Company Info</h3>
+                  {wizmatchCompanyIntelligence && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        wizmatchCompanyIntelligence.qualificationTier === 'A'
+                          ? 'bg-success-500/10 text-success-700'
+                          : wizmatchCompanyIntelligence.qualificationTier === 'B'
+                          ? 'bg-warning-500/10 text-warning-700'
+                          : 'bg-neutral-100 text-neutral-500'
+                      }`}>
+                        Tier {wizmatchCompanyIntelligence.qualificationTier ?? '—'}
+                      </span>
+                      {wizmatchCompanyIntelligence.qualificationScore != null && (
+                        <span className="text-xs text-neutral-500">Score: {wizmatchCompanyIntelligence.qualificationScore}/100</span>
+                      )}
+                      {wizmatchCompanyIntelligence.reviewStatus && (
+                        <span className="text-xs text-neutral-500 capitalize">{wizmatchCompanyIntelligence.reviewStatus.replace(/_/g, ' ')}</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {wizmatchCompany.domain && (
+                      <div>
+                        <span className="text-xs text-neutral-400 block">Domain</span>
+                        <a href={`https://${wizmatchCompany.domain}`} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">
+                          {wizmatchCompany.domain} ↗
+                        </a>
+                      </div>
+                    )}
+                    {wizmatchCompany.industry && (
+                      <div><span className="text-xs text-neutral-400 block">Industry</span>{wizmatchCompany.industry}</div>
+                    )}
+                    {wizmatchCompany.employeeCount != null && (
+                      <div><span className="text-xs text-neutral-400 block">Employees</span>{wizmatchCompany.employeeCount}</div>
+                    )}
+                    {wizmatchCompany.atsType && wizmatchCompany.atsType !== 'none' && (
+                      <div><span className="text-xs text-neutral-400 block">ATS</span>{formatSourceLabel(wizmatchCompany.atsType)}</div>
+                    )}
+                    {wizmatchCompany.h1bSponsorCount > 0 && (
+                      <div><span className="text-xs text-neutral-400 block">H-1B sponsorships</span>{wizmatchCompany.h1bSponsorCount}</div>
                     )}
                   </div>
                 </div>

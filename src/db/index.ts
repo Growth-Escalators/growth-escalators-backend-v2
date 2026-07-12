@@ -89,6 +89,8 @@ export {
   outboundEvents,
   // Wizmatch staffing module tables
   wizmatchCompanies,
+  wizmatchCompanyIntelligence,
+  wizmatchContactCandidates,
   wizmatchJobSignals,
   wizmatchCandidates,
   wizmatchPlacements,
