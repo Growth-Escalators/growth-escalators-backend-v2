@@ -1,13 +1,25 @@
-# Wizmatch — verified dataflow (code-traced 2026-07-10)
+# Wizmatch — verified dataflow (code-traced 2026-07-10, corrected 2026-07-12)
 
 This is the **authoritative** map of how data moves through the Wizmatch staffing/outreach system,
 traced from the actual code (worker crons, services, routes, and the tables they touch) — not from
 memory. Use it to (a) ground the Cockpit redesign and (b) feed Claude design when the repo is attached.
 
 > Honesty note: an earlier "5-stage funnel" sketch was directionally right but **incomplete**. It
-> missed the four automated sourcing engines, the fact that Wizmatch and Growth use **different**
+> missed the automated sourcing engines, the fact that Wizmatch and Growth use **different**
 > senders, that the candidate-supply side is a **separate** funnel, and that Wizmatch tables live in
 > ensure-hooks (not `schema.ts`). This doc corrects all four.
+>
+> **2026-07-12 correction:** the original pass mislabeled two crons and one automatic pipeline step.
+> Re-verified against the actual service code:
+> - **GitHub Miner** and **X-Ray Scraper** create rows in `wizmatch_candidates` (supply side), **not**
+>   `wizmatch_job_signals` — they search for job-seekers (GitHub devs, LinkedIn "open to work"
+>   profiles), not open roles. Moved to section 4.
+> - **`wizmatch_requirements` is never populated automatically from a signal.** There is exactly one
+>   insert path in the whole codebase: `POST /requirements` (a human-confirmed form), optionally
+>   pre-filled by Claude via `POST /requirements/parse` (paste text or upload a JD PDF/screenshot).
+>   The old QUALIFY bullet implying auto-parsing was wrong — fixed below.
+> - **RemoteOK** and **TheirStack** importers exist in `worker.ts` but were missing from this doc
+>   entirely (added after the original trace). Added to the FIND-stage table and diagram.
 
 ---
 
@@ -60,11 +72,13 @@ If `WIZMATCH_TENANT_ID` is unset, **none of these run** (that's the master on/of
 | Wizmatch Matching | every 2 h | SUPPLY | Matches `wizmatch_candidates` ↔ `wizmatch_requirements`. (candidate funnel) |
 | Wizmatch Domain Health | hourly | SEND infra | Recomputes `wizmatch_domain_health`. |
 | Wizmatch Domain Warmup | every 6 h | SEND infra | Advances domain warmup. |
-| Wizmatch ATS Poller | daily 00:30 | FIND | Polls ATS/job boards → new `wizmatch_job_signals`. |
-| Wizmatch X-Ray Scraper | daily 02:30 | FIND | X-ray sourcing → signals/contacts. |
-| Wizmatch GitHub Miner | daily 03:30 | FIND | Mines GitHub for hiring/company signals. |
-| Wizmatch LCA Importer | weekly Sun 16:30 | FIND | Imports US LCA (visa) filings as hiring signals. |
-| Wizmatch Daily Digest | Mon–Sat 12:30 | reporting | Digest summary. |
+| Wizmatch ATS Poller | daily 00:30 | FIND (demand) | Polls Greenhouse/Lever/Ashby public APIs for companies with an `ats_slug` already set → new/updated `wizmatch_job_signals`. Free, no auth. |
+| Wizmatch RemoteOK Importer | daily 01:30 | FIND (demand) | Free public `remoteok.com/api` feed, filtered to tech roles → `wizmatch_job_signals` via the shared `/signals/ingest` endpoint. |
+| Wizmatch TheirStack Importer | weekly Mon 01:30 | FIND (demand) | Paid API, India job postings (the $0-scrape workaround for Naukri, which blocks direct scraping) → `wizmatch_job_signals`. No-ops if `THEIRSTACK_API_KEY` unset; capped at `WIZMATCH_THEIRSTACK_LIMIT` (default 25/week). |
+| Wizmatch X-Ray Scraper | daily 02:30 | FIND (**supply**, not demand) | SerpAPI Google search for LinkedIn "open to work" profiles → new `wizmatch_candidates`. No email captured yet (enriched later). |
+| Wizmatch GitHub Miner | daily 03:30 | FIND (**supply**, not demand) | GitHub Search API by location+language, keeps only users with a public email → new `wizmatch_candidates`. |
+| Wizmatch LCA Importer | weekly Sun 16:30 | enrichment (not a signal source) | Downloads DOL H-1B/H-2B disclosure data, aggregates by employer name → updates `wizmatch_companies.h1b_sponsor_count` only. Does **not** create job signals. |
+| Wizmatch Daily Digest | Mon–Sat 12:30 | reporting | Digest summary to Slack. **Currently silently suppressed** — the call doesn't pass `allowDuringPause`, and the account-wide `SLACK_NOTIFICATIONS_PAUSED` flag is on, so the cron runs and logs "sent" but nothing reaches Slack. |
 
 > Browser/Python-heavy scrapers run as **GitHub Actions** workflows (not the worker) — the worker
 > comment says "HTTP/DB-only jobs (no browser/Python — those run in GitHub Actions)." So some
@@ -75,9 +89,9 @@ If `WIZMATCH_TENANT_ID` is unset, **none of these run** (that's the master on/of
 ## 3. Demand / outreach funnel — end to end
 
 ```
-                 (4 auto engines + manual)              every 30 min                 manual, cost-guarded
+              (3 auto engines + manual, all demand-side)     every 30 min                 manual, cost-guarded
  SOURCES ───────────────────────────────────▶ wizmatch_job_signals ──▶ SCORING ──▶ wizmatch_company_intelligence
- ATS poll · X-ray · GitHub miner · LCA ·        (+ wizmatch_companies)   (tier A/B/C,   (status='qualified', tier, score)
+ ATS poll · RemoteOK · TheirStack ·             (+ wizmatch_companies)   (tier A/B/C,   (status='qualified', tier, score)
  seed-company / CSV upload                                               urgency)              │
                                                                                                │  "send to Contact Intelligence"
                                                                                                ▼
@@ -102,13 +116,16 @@ If `WIZMATCH_TENANT_ID` is unset, **none of these run** (that's the master on/of
 
 **Stage-by-stage:**
 
-1. **FIND** — Four automated engines (ATS/X-ray/GitHub/LCA crons) + manual **seed-company** / **CSV
-   upload** (`/api/wizmatch/client-discovery/seed-company`) create rows in `wizmatch_job_signals` and
-   `wizmatch_companies`.
+1. **FIND** — Three automated engines (**ATS Poller**, **RemoteOK**, **TheirStack** — all HTTP/API,
+   no browser) + manual **seed-company** / **CSV upload** (`/api/wizmatch/client-discovery/seed-company`)
+   create rows in `wizmatch_job_signals` and `wizmatch_companies`. **LCA Importer** runs alongside these
+   but only enriches `wizmatch_companies.h1b_sponsor_count` — it does not create signals.
 2. **QUALIFY** — *Signal Scoring* (30 min) scores signals; `qualifyCompanyForContactIntelligence()`
    turns score + hard-blocks into **Tier A/B/C/Reject** + **hiring urgency**, persisted to
-   `wizmatch_company_intelligence` (`status='qualified'`). Requirements are parsed into
-   `wizmatch_requirements`; *Requirement Priority* ranks which roles to chase.
+   `wizmatch_company_intelligence` (`status='qualified'`). *Requirement Priority* ranks the resulting
+   signals/companies. **Structured `wizmatch_requirements` rows are never created automatically** —
+   a human pastes/uploads the actual JD (`POST /requirements/parse`, Claude-extracted) and confirms it
+   (`POST /requirements`) once a company looks worth pursuing.
 3. **CONTACT** — A human sends a qualified company from **Client Discovery → Contact Intelligence**
    (`.../companies/:id/send-to-contact-intelligence`). The **discovery cascade** (cost-guarded,
    Apollo/Snov off by default) produces `wizmatch_contact_candidates` with confidence tiers; each run
@@ -125,7 +142,7 @@ If `WIZMATCH_TENANT_ID` is unset, **none of these run** (that's the master on/of
 ## 4. Candidate / supply funnel (separate — NOT in the Cockpit)
 
 ```
-candidate intake ─▶ wizmatch_candidates / wizmatch_candidate_intake
+manual intake · GitHub Miner (daily) · X-Ray Scraper (daily) ─▶ wizmatch_candidates / wizmatch_candidate_intake
                          │  Matching cron (every 2h)
                          ▼
                     wizmatch_requirements  ──▶ match/shortlist ──▶ wizmatch_certified
@@ -133,8 +150,15 @@ candidate intake ─▶ wizmatch_candidates / wizmatch_candidate_intake
                          └──────────────▶ RTR generator (right-to-represent) ──▶ wizmatch_placements
 ```
 
+- **GitHub Miner** (daily 03:30) — GitHub Search API by location+language, keeps only profiles with a
+  public email, creates a contact + `wizmatch_candidates` row (source=`github`).
+- **X-Ray Scraper** (daily 02:30) — SerpAPI Google search (`site:linkedin.com/in ... "open to work"`),
+  free tier 100 searches/mo so capped at 3 queries/day; creates a contact (no email yet) +
+  `wizmatch_candidates` row (source=`xray`).
+
 Services: `wizmatchCandidateIntake`, `wizmatchCandidateIntelligence`, `wizmatchMatching`,
-`wizmatchRtrGenerator`, `wizmatchRequirementSheet`. Reference data: `wizmatchPrimes` (prime vendors).
+`wizmatchRtrGenerator`, `wizmatchRequirementSheet`, `wizmatchGithubMiner`, `wizmatchXrayScraper`.
+Reference data: `wizmatchPrimes` (prime vendors).
 
 ---
 
@@ -151,6 +175,19 @@ Services: `wizmatchCandidateIntake`, `wizmatchCandidateIntelligence`, `wizmatchM
 - **CONTACT is manual + cost-guarded** by design (never auto-spends): needs a cost-guard token and
   human review before a contact is used.
 - **Sending is gated off** (`WIZMATCH_SENDING_ENABLED=false`) until explicitly enabled.
+- **Only one Railway service** (`web`) runs everything, verified 2026-07-12 — there is no separate
+  `worker` service in this project. All crons in `worker.ts` run in-process, gated by
+  `WIZMATCH_TENANT_ID` being set and `DISABLE_BACKGROUND_JOBS` NOT being `'true'` (both true today).
+  `WIZMATCH_API_BASE_URL` is unset, so `postSignals()` falls back to the public
+  `api.growthescalators.com` — harmless here since it's a single service, but would need setting if a
+  second (worker) service is ever split out.
+- **The Daily Digest cron is currently a silent no-op for Slack** — `SLACK_NOTIFICATIONS_PAUSED=true`
+  is set account-wide, and the digest's `sendSlackMessage()` call doesn't pass
+  `{ allowDuringPause: true }` (unlike the domain-health and Cashfree-sale alerts, which do). The cron
+  still runs and logs "sent," but nothing reaches Slack until either the pause is lifted or the call is
+  updated to bypass it.
+- **TheirStack is live, not dormant** — `THEIRSTACK_API_KEY` is configured in production (verified
+  2026-07-12), so the weekly importer actually runs; it isn't waiting on a key to be added.
 
 ---
 
