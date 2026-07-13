@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate with: npm run ai:brief -->
 
-_Generated: 2026-07-13T09:32:53.341Z_
+_Generated: 2026-07-13T09:33:04.986Z_
 
 This is a machine-generated snapshot of local repo state. It exists so any AI agent or fresh
 chat can rebuild context from the repo alone. For durable guidance read `AGENTS.md`,
@@ -12,8 +12,8 @@ chat can rebuild context from the repo alone. For durable guidance read `AGENTS.
 
 - **Repo**: Growth-Escalators/Growth-Escalators-CRM
 - **Branch**: `codex/wizmatch-phase0-trust`
-- **Last commit**: ff9f696 docs(ai): record Wizmatch release review (9 seconds ago)
-- **Uncommitted changes**: 1 file(s)
+- **Last commit**: 09722b9 chore(ai): refresh Wizmatch release brief (12 seconds ago)
+- **Uncommitted changes**: 0 file(s)
 
 ## Current task
 
@@ -32,6 +32,7 @@ or used to rotate a credential. The original dirty workspace at
 ## Recent commits
 
 ```
+09722b9 chore(ai): refresh Wizmatch release brief
 ff9f696 docs(ai): record Wizmatch release review
 605d6cd fix(wizmatch): enforce delivery reference integrity
 f293c05 chore(ai): refresh clean release snapshot
@@ -41,7 +42,6 @@ f293c05 chore(ai): refresh clean release snapshot
 48b1a88 feat(wizmatch): complete Gate C delivery operations
 a5ac3e8 feat(wizmatch): add Gate B candidate matching
 1997e31 feat(wizmatch): harden Phase 1 operations
-353221b chore(ai): record Gate A migrator verification
 ```
 
 ## npm scripts
