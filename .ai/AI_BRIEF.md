@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate with: npm run ai:brief -->
 
-_Generated: 2026-07-13T08:42:11.554Z_
+_Generated: 2026-07-13T08:43:19.966Z_
 
 This is a machine-generated snapshot of local repo state. It exists so any AI agent or fresh
 chat can rebuild context from the repo alone. For durable guidance read `AGENTS.md`,
@@ -12,7 +12,7 @@ chat can rebuild context from the repo alone. For durable guidance read `AGENTS.
 
 - **Repo**: Growth-Escalators/Growth-Escalators-CRM
 - **Branch**: `codex/wizmatch-phase0-trust`
-- **Last commit**: 0acea59 docs(ai): hand off Wizmatch release context (11 seconds ago)
+- **Last commit**: 3f6679a docs(ai): record production flag verification (0 seconds ago)
 - **Uncommitted changes**: 0 file(s)
 
 ## Current task
@@ -30,6 +30,8 @@ or used to rotate a credential. The original dirty workspace at
 ## Recent commits
 
 ```
+3f6679a docs(ai): record production flag verification
+3ef1903 chore(ai): refresh Wizmatch release brief
 0acea59 docs(ai): hand off Wizmatch release context
 48b1a88 feat(wizmatch): complete Gate C delivery operations
 a5ac3e8 feat(wizmatch): add Gate B candidate matching
@@ -38,8 +40,6 @@ a5ac3e8 feat(wizmatch): add Gate B candidate matching
 5e733a6 chore(ai): hand off Wizmatch Gate A
 b43017e feat(admin): add Wizmatch staffing workspaces
 14b51f5 feat(wizmatch): implement Gate A staffing operations
-8cd20c6 feat(wizmatch): add Gate A staffing schema
-0a8931d chore(ai): finalize phase zero handoff
 ```
 
 ## npm scripts
