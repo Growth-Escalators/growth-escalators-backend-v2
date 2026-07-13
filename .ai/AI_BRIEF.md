@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate with: npm run ai:brief -->
 
-_Generated: 2026-07-13T10:14:47.881Z_
+_Generated: 2026-07-13T18:36:30.295Z_
 
 This is a machine-generated snapshot of local repo state. It exists so any AI agent or fresh
 chat can rebuild context from the repo alone. For durable guidance read `AGENTS.md`,
@@ -12,28 +12,41 @@ chat can rebuild context from the repo alone. For durable guidance read `AGENTS.
 
 - **Repo**: Growth-Escalators/Growth-Escalators-CRM
 - **Branch**: `codex/wizmatch-phase0-trust`
-- **Last commit**: 89bcbb2 docs(ai): prepare same-day Wizmatch pilot handoff (20 seconds ago)
-- **Uncommitted changes**: 0 file(s)
+- **Last commit**: a810d08 fix(migrations): make 0008/0014 idempotent for fresh-database apply (7 hours ago)
+- **Uncommitted changes**: 7 file(s)
 
 ## Current task
 
-**Wizmatch Staffing OS — prepare and execute a controlled same-day Gate A–C pilot from the clean
-release worktree. Local implementation and release-integrity review are complete. The exact next
-action is separately approved creation of an isolated Railway `staging` environment and empty
-Postgres instance.**
+**Wizmatch Staffing OS — a controlled Gate A–C pilot is running on an ISOLATED Railway `staging`
+environment. Local implementation and release-integrity review are complete. Staging holds its own
+Postgres (`Postgres-Bhky`, full journal 0000–0028 applied) and a `web` service (`web-staging`)
+running this worktree, healthy, with Gate A/B/C flags ON, sending + paid-discovery + background jobs
+OFF. Staging URL: https://web-staging-staging-1d24.up.railway.app.**
+
+**Gates A and B are exercised with fictional records and DB-verified. Gate A is now COMPLETE with
+REAL relationship/attribution records: Person A → SAP requirement and Person B → Java requirement,
+each with a company-contact relationship, primary-source attribution, account-owner + recruiter
+assignments, dated next action + SLA, moved to `qualifying`. The exposed staging pilot password has
+been rotated (new value never printed/stored). The exact next action is Gate C, which is BLOCKED on
+staging R2 (consent/RTR/submission documents) and is NOT authorized yet — awaiting separate
+staging-R2 approval.**
 
 Work only in `/Users/jatinagrawal/repo-comparison/v2-wizmatch-phase0-trust` on
 `codex/wizmatch-phase0-trust`. Preserve the unrelated dirty workspace at
 `/Users/jatinagrawal/repo-comparison/v2`.
 
-Nothing from this branch has been pushed, deployed, migrated, sent, spent, written to production,
-or used to rotate a credential.
+**Production is untouched:** nothing from this branch has been pushed to a remote, deployed to
+production, applied to the production database, sent, spent, or written to production data. Staging
+(a separate isolated environment) HAS been created, migrated, deployed and populated with fictional
+pilot data, and the staging pilot login password was rotated — none of which affects production.
 
 > Full detail in [`.ai/CURRENT_TASK.md`](CURRENT_TASK.md) · state in [`.ai/CURRENT_STATE.md`](CURRENT_STATE.md)
 
 ## Recent commits
 
 ```
+a810d08 fix(migrations): make 0008/0014 idempotent for fresh-database apply
+08f1ef6 chore(ai): refresh same-day pilot brief
 89bcbb2 docs(ai): prepare same-day Wizmatch pilot handoff
 2085b84 chore(ai): snapshot clean release state
 09722b9 chore(ai): refresh Wizmatch release brief
@@ -42,8 +55,6 @@ ff9f696 docs(ai): record Wizmatch release review
 f293c05 chore(ai): refresh clean release snapshot
 3f6679a docs(ai): record production flag verification
 3ef1903 chore(ai): refresh Wizmatch release brief
-0acea59 docs(ai): hand off Wizmatch release context
-48b1a88 feat(wizmatch): complete Gate C delivery operations
 ```
 
 ## npm scripts

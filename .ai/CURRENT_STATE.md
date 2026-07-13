@@ -5,9 +5,13 @@ _Update this when the working state of the repo meaningfully changes. Keep it sh
 ## 2026-07-13 Staffing OS three-phase snapshot (current)
 
 - Clean worktree `/Users/jatinagrawal/repo-comparison/v2-wizmatch-phase0-trust`, branch
-  `codex/wizmatch-phase0-trust`; original dirty workspace preserved. After the latest fetch it is
-  0 commits behind and 25 commits ahead of `origin/main`. No push, deployment, production
-  migration/data write, sending, paid call or credential operation occurred.
+  `codex/wizmatch-phase0-trust`; original dirty workspace preserved. It is 0 commits behind and
+  ahead of `origin/main` by the scoped implementation commits plus context/evidence commits (see
+  `git log`). **Production is untouched**: no push to a remote, no production deployment, no
+  production migration or data write, no sending, no paid call. An ISOLATED Railway `staging`
+  environment (separate from production) HAS been created, migrated, deployed and populated with
+  fictional pilot data, and the staging pilot login password was rotated — none of which affects
+  production. Details below.
 - Phase 0 + Gate A are committed as `1997e31`; Gate B as `a5ac3e8`; Gate C as `48b1a88`.
 - Release review repair `605d6cd` validates linked recipients/participants against the actor tenant
   and requirement company, blocks duplicate placement creation, reconciles invoice/client/payment
@@ -27,24 +31,81 @@ _Update this when the working state of the repo meaningfully changes. Keep it sh
   Gate-C-controlled, $0, and performs no communication.
 - Migration `0028_strong_cammi.sql` passed production-shaped scratch application on the committed
   Gate B schema. Nine Gate C tables, staffing event/task trace links and journal advancement were
-  verified. A fresh full historical chain still has a pre-existing old `social_accounts` duplicate
-  issue; it is unrelated to 0028 and was not modified.
+  verified. The pre-existing "fresh full historical chain" defects (bare re-creates in `0008`;
+  `ON CONFLICT ON CONSTRAINT` in `0014`) were later RESOLVED for empty-DB apply in commit `a810d08`
+  (see below) and the full journal now applies cleanly to a fresh database (verified on staging).
 - Verification: TypeScript build passed; 43 Vitest files / 349 tests passed; admin production build
   passed; 16/16 local mocked Chromium scenarios passed through placement; `git diff --check` was
   clean. A headless check against the production admin bundle with all Vite staffing flags absent
   redirected `/wizmatch/talent-matching` to Dashboard and confirmed Gate A/B/C nav labels were absent.
-- Read-only Railway inspection confirms production currently has one `web` service plus Postgres,
-  no staging environment and no worker service. Production `web` remains on commit
-  `b05ac015eff8444edc217563fdb93ac5ef836639`; its latest deployment reported `SUCCESS`. Gate A/B/C
-  server and Vite variables are absent. Deployment docs reference `railway.worker.json`, but that
-  file is absent from this worktree and worker deployment is post-pilot. No Railway state changed
-  during release review or handoff preparation.
-- Remaining work is release/environment work, not additional local feature construction: live
-  Dice/TheirStack evidence, staging/production migrations, pilot data, feature flags, authenticated
-  live smoke, credential rotation and push/deploy all require their own explicit approvals.
-- The owner selected a controlled full Gate A–C pilot as the same-day target and required Claude to
-  pause at every guarded action. Named pilot users may begin after Gate C smoke; unrestricted
-  team-wide use still requires 48 hours of stable monitoring.
+- Railway project `GE-Backend-Server` (id `eef927aa-8e3a-4515-85fd-781b7d1d95c1`) now has two
+  environments: `production` (unchanged, id `81b087de-6c7d-493c-94f0-50c8180c47da`) and a new
+  isolated `staging` (id `6aa742f6-38c1-4c3e-8471-6ec5fecea027`) created 2026-07-13 without
+  forking from production. Production continues to hold `web`
+  (id `0ee1b243-97c1-4239-9016-fb7e1578b3d6`) and the original managed `Postgres`
+  (id `0c31ec38-0433-46c6-9fbb-5dd2859d1a08`); staging holds only a managed Postgres
+  `Postgres-Bhky` (id `a78f7108-45b1-46c8-bd8e-682edae2ff1f`) with its own dedicated volume
+  `postgres-volume-STmx` (id `da958ec3-a5d8-46d3-bf7e-b494f5617450`) and its own private domain
+  `postgres-bhky.railway.internal`. The full migration journal (0000–0028, 29 entries) has been
+  applied to `Postgres-Bhky` and verified (`drizzle.__drizzle_migrations` = 29 rows, 81 public base
+  tables, 31 wizmatch tables, all Gate A/B/C tables present); it now holds fictional pilot data (see
+  Gate A/B below). At migration time staging had no `web` service; `web-staging` was added afterward
+  (deployment paragraph below). No worker service exists in either environment; production has no
+  Gate A/B/C flags (staging does — see below). No production database URL or data is referenced from
+  staging. Production `web` remains on commit `b05ac015eff8444edc217563fdb93ac5ef836639`; its latest
+  deployment reported `SUCCESS` and its timestamp is unchanged since before the staging creation.
+  Deployment docs reference `railway.worker.json`, but that file is absent from this worktree and
+  worker deployment is post-pilot.
+- Two committed migrations were edited to be idempotent for a fresh (empty-DB) apply, which the
+  staging migration required; production was migrated incrementally and is unaffected, and both
+  edits are prod-safe (won't re-run on a prod deploy; no-ops if they did; no resulting schema
+  change). `src/db/migrations/0008_great_romulus.sql` now guards the 8 statements `0007` already
+  performs (2 CREATE TABLE, 3 ADD COLUMN, 3 social FK constraints);
+  `src/db/migrations/0014_brevo_email_templates_seed.sql` now uses `ON CONFLICT (tenant_id, name)`
+  instead of `ON CONFLICT ON CONSTRAINT` on a unique index. Both files were committed to the branch
+  as `a810d08` (not pushed). `0009` and `0020_wizmatch_gin_indexes` were verified already-idempotent
+  and untouched.
+- This clean worktree is deployed to a staging `web` service `web-staging`
+  (id `e7f073ec-4835-4fbb-ad1c-17f0f5bb17f6`) via `railway up` (deployment
+  `964770e6-a8cf-4f9f-840a-670e13b1d7a4`, status `SUCCESS`) at
+  https://web-staging-staging-1d24.up.railway.app — no `main` push, production `web` untouched.
+  Staging-only env: `DATABASE_URL` references `Postgres-Bhky`; a fresh `JWT_SECRET` was generated
+  and set via stdin (value never stored); `NODE_ENV=production`; `DISABLE_BACKGROUND_JOBS=true`;
+  Gate A/B/C server+Vite flags ON (staging only); sending, paid discovery and Google fallback OFF;
+  `CRM_EXTRA_HOST` set so the admin SPA serves on the staging domain. Verified `/health`=200
+  `database:ok` `env:production`, and the CRM admin SPA is built and served. No production secret
+  was copied; no sending, paid call, production data access, or push occurred.
+- `CORS_EXTRA_ORIGIN=https://web-staging-staging-1d24.up.railway.app` is set on `web-staging`
+  (deploying this app on any host other than `crm.growthescalators.com` requires it, else the SPA's
+  own crossorigin asset/API requests are CORS-rejected with a 500). A fictional `wizmatch` staging
+  tenant + admin (`pilot@wizmatch.test`, role admin) were bootstrapped for the pilot; the pilot
+  password was later ROTATED (new value never printed or stored; `token_version` bumped so old
+  sessions are revoked; the previously-exposed password now 401s).
+- **Gate A is COMPLETE on staging with REAL records and DB-verified:** `Company A (Pilot)` seeded
+  (deterministic score 54/watch); two distinct requirements `SAP ABAP Consultant (Person A)` +
+  `Java Backend Developer (Person B)` both attributed to one `company_id`; hiring contacts Person A +
+  Person B linked (roles hiring_manager, source); SAP→Person A and Java→Person B primary-source
+  attribution; account-owner + recruiter assignments per requirement; dated next action + SLA per
+  requirement; both moved draft→`qualifying` (draft→accepted correctly blocked). DB truth:
+  `wizmatch_requirement_contacts=2` (one distinct source contact each), `wizmatch_requirement_assignments=4`,
+  `wizmatch_staffing_events=14`. Company 360 / Hiring Contact 360 / Requirement 360 / timelines /
+  isolation all verified in the UI (Person A's history shows only SAP; Person B's only Java).
+- **Gate B is exercised and DB-verified:** 2 fictional candidates imported (preview scored without
+  persisting — a score is not a shortlist); deterministic matching routed Rahul→SAP(Person A) and
+  Priya→Java(Person B); Rahul shortlisted while `wizmatch_submissions/placements/offers = 0` (a
+  shortlist is not a submission).
+- Requirement-sheet PDFs and Gate C consent/RTR documents need R2 (intentionally unset in staging →
+  honest "R2 not configured" error; the requirement record still persists). "Parse with AI" needs
+  Anthropic (also intentionally unset). **Gate C is NOT authorized** — do not provision R2 or begin
+  Gate C without separate explicit approval. Only fictional pilot rows exist in the staging DB.
+- Done on staging (separately approved, isolated): staging create + empty Postgres, full migration,
+  deploy, fictional Gate A/B pilot data + exercise, staging pilot login rotation. Still gated and NOT
+  done: Gate C / staging R2 provisioning, production migrations, production data access/write, the
+  exact push of any branch to a remote (and thus `main` auto-deploy), and enabling Gate A/B/C in
+  PRODUCTION — each needs its own explicit approval.
+- The owner selected a controlled Gate A–C pilot and required Claude to pause at every guarded
+  action. Named pilot users may begin after Gate C smoke; unrestricted team-wide use still requires
+  48 hours of stable monitoring.
 
 ## 2026-07-13 snapshot (historical — before Gates B/C)
 
