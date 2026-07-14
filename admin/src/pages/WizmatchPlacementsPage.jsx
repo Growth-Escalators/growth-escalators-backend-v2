@@ -27,10 +27,10 @@ const COUNT_PILL = {
   started: 'bg-white border-[#bbf7d0] text-[#15803d]',
   lost: 'bg-white border-[#fecaca] text-[#dc2626]',
 };
-const SUBTOTAL_TEXT = { started: 'text-[#16a34a]', lost: 'text-[#dc2626]' };
+const SUBTOTAL_TEXT = { started: 'text-[#15803d]', lost: 'text-[#b91c1c]' };
 const NEW_CARD_BORDER = {
-  started: 'border-[#bbf7d0] text-[#16a34a]',
-  lost: 'border-[#fecaca] text-[#dc2626]',
+  started: 'border-[#bbf7d0] text-[#15803d]',
+  lost: 'border-[#fecaca] text-[#b91c1c]',
 };
 
 export default function WizmatchPlacementsPage() {
@@ -81,14 +81,14 @@ export default function WizmatchPlacementsPage() {
   const filteredPlacements = roleFilter ? placements.filter(p => p.job_title === roleFilter) : placements;
   const commercialSummary = summarizePlacementCommercials(filteredPlacements);
 
-  if (loading) return <div className="p-6"><p className="text-neutral-400">Loading...</p></div>;
+  if (loading) return <div className="p-6"><p className="text-neutral-500">Loading...</p></div>;
   if (loadError && placements.length === 0) return <div className="p-6"><ErrorRetry message={loadError} onRetry={load} /></div>;
 
   return (
     <div className="flex flex-col h-full">
       {/* Command bar */}
       <div className="bg-white border-b border-neutral-200 px-6 py-3.5 flex items-center gap-3">
-        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="input w-auto min-w-[170px]">
+        <select aria-label="Filter by role" value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="input w-auto min-w-[170px]">
           <option value="">All roles</option>
           {roles.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
@@ -142,7 +142,7 @@ export default function WizmatchPlacementsPage() {
                     {stageDeals.length}
                   </span>
                 </div>
-                <p className={`px-3 pb-2 text-[11px] font-medium ${SUBTOTAL_TEXT[stage] || 'text-neutral-400'}`}>
+                <p className={`px-3 pb-2 text-[11px] font-medium ${SUBTOTAL_TEXT[stage] || 'text-neutral-600'}`}>
                   {stageCommercialSummary}
                 </p>
                 <div className="px-2.5 pb-2.5 space-y-2">
@@ -156,21 +156,21 @@ export default function WizmatchPlacementsPage() {
                     >
                       <p className="text-[13.5px] font-semibold text-neutral-900">{p.candidate_first} {p.candidate_last}</p>
                       <p className="text-xs text-neutral-500 mt-0.5">{p.company_name}</p>
-                      <p className="text-[11.5px] text-neutral-400 mt-px mb-2">{p.job_title}</p>
+                      <p className="text-[11.5px] text-neutral-500 mt-px mb-2">{p.job_title}</p>
                       <div className="flex items-center justify-between">
                         {stage === 'ended' ? (
                           <span className="text-xs font-semibold text-neutral-500">Contract ended</span>
                         ) : stage === 'lost' ? (
                           <span className="text-[11.5px] font-medium text-danger-600">Lost</span>
                         ) : (
-                          <span className="text-xs font-semibold text-success-600">{formatPlacementCommercial(p)}</span>
+                          <span className="text-xs font-semibold text-success-700">{formatPlacementCommercial(p)}</span>
                         )}
                       </div>
                     </div>
                   ))}
                   <button
                     onClick={() => setShowAddModal(true)}
-                    className={`w-full text-xs font-medium border border-dashed rounded-md py-1.5 transition-colors hover:bg-white/60 ${NEW_CARD_BORDER[stage] || 'border-neutral-300 text-neutral-400'}`}
+                    className={`w-full text-xs font-medium border border-dashed rounded-md py-1.5 transition-colors hover:bg-white/60 ${NEW_CARD_BORDER[stage] || 'border-neutral-300 text-neutral-600'}`}
                   >
                     + New
                   </button>
@@ -366,7 +366,7 @@ function PlacementDetailModal({ placement, capabilities, onClose, onChanged }) {
             <h2 className="text-[18px] font-bold text-neutral-900 truncate">{placement.candidate_first} {placement.candidate_last}</h2>
             <p className="text-[12px] text-neutral-500 mt-0.5">{placement.company_name} · {placement.job_title || 'No role on file'}</p>
           </div>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-neutral-500 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="px-6 pt-3 flex gap-1 border-b border-neutral-100">
@@ -439,11 +439,11 @@ function OverviewTab({ placement, hasRequirement, events, loading }) {
       <div className="border-t border-neutral-100 pt-4">
         <h3 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">Activity</h3>
         {!hasRequirement ? (
-          <p className="text-[12px] text-neutral-400">This placement has no linked requirement, so activity history isn't available.</p>
+          <p className="text-[12px] text-neutral-500">This placement has no linked requirement, so activity history isn't available.</p>
         ) : loading ? (
-          <p className="text-[12px] text-neutral-400">Loading activity…</p>
+          <p className="text-[12px] text-neutral-500">Loading activity…</p>
         ) : events.length === 0 ? (
-          <p className="text-[12px] text-neutral-400">No placement activity recorded yet.</p>
+          <p className="text-[12px] text-neutral-500">No placement activity recorded yet.</p>
         ) : (
           <div className="space-y-1.5">
             {events.map((e) => (
@@ -536,7 +536,7 @@ function InvoiceTab({ placement, canManageFinance, invoiceDetail, invoiceLoading
   };
 
   if (placement.invoice_id) {
-    if (invoiceLoading) return <p className="text-[12.5px] text-neutral-400">Loading invoice…</p>;
+    if (invoiceLoading) return <p className="text-[12.5px] text-neutral-500">Loading invoice…</p>;
     if (invoiceLoadError) return <ErrorRetry message={invoiceLoadError} />;
     const inv = invoiceDetail?.invoice;
     return (
@@ -557,11 +557,11 @@ function InvoiceTab({ placement, canManageFinance, invoiceDetail, invoiceLoading
       ) : candidatesError ? (
         <ErrorRetry message={candidatesError} onRetry={loadCandidates} />
       ) : candidates === null ? (
-        <p className="text-[12px] text-neutral-400">Loading invoices…</p>
+        <p className="text-[12px] text-neutral-500">Loading invoices…</p>
       ) : (
         <>
           <input placeholder="Search by invoice number or client…" value={search} onChange={(e) => setSearch(e.target.value)} className="input w-full" />
-          <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="input w-full" size={6}>
+          <select aria-label="Matching invoices" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="input w-full" size={6}>
             {filtered.length === 0 && <option disabled>No matching invoices</option>}
             {filtered.map((inv) => (
               <option key={inv.id} value={inv.id}>{inv.invoice_number} · {inv.client_name} · {money(inv.total_amount)}</option>
@@ -579,7 +579,7 @@ function InvoiceTab({ placement, canManageFinance, invoiceDetail, invoiceLoading
 
 function CollectionTab({ invoiceDetail, invoiceLoading, invoiceLoadError, hasInvoice }) {
   if (!hasInvoice) return <p className="text-[12.5px] text-neutral-500">Link an invoice first to see collections here.</p>;
-  if (invoiceLoading) return <p className="text-[12.5px] text-neutral-400">Loading collections…</p>;
+  if (invoiceLoading) return <p className="text-[12.5px] text-neutral-500">Loading collections…</p>;
   if (invoiceLoadError) return <ErrorRetry message={invoiceLoadError} />;
   const payments = invoiceDetail?.payments || [];
   const inv = invoiceDetail?.invoice;
@@ -651,7 +651,7 @@ function AdjustmentsTab({ placement, hasRequirement, adjustments, loading, canMa
   return (
     <div className="space-y-4">
       {loading ? (
-        <p className="text-[12px] text-neutral-400">Loading adjustments…</p>
+        <p className="text-[12px] text-neutral-500">Loading adjustments…</p>
       ) : adjustments.length === 0 ? (
         <EmptyState title="No adjustments" description="No disputes, replacements or refunds have been opened on this placement." />
       ) : (
@@ -678,7 +678,7 @@ function AdjustmentsTab({ placement, hasRequirement, adjustments, loading, canMa
         showForm ? (
           <div className="card p-3 space-y-2.5 border-primary-200">
             <div className="grid grid-cols-2 gap-2.5">
-              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input">
+              <select aria-label="Adjustment type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input">
                 {ADJUSTMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
               <input type="number" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="input" />

@@ -87,8 +87,8 @@ export default function ConsentDialog({ open, candidateName, requirementTitle, l
             {candidateName ? <b>{candidateName}</b> : 'This candidate'} for <b>{requirementTitle}</b>. Required before this submission can be approved.
           </p>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Consent type</label>
-            <select ref={firstFieldRef} value={consentType} onChange={(e) => setConsentType(e.target.value)} className="input w-full mt-1">
+            <label htmlFor="consent-type" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Consent type</label>
+            <select id="consent-type" ref={firstFieldRef} value={consentType} onChange={(e) => setConsentType(e.target.value)} className="input w-full mt-1">
               {CONSENT_TYPES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
@@ -97,14 +97,14 @@ export default function ConsentDialog({ open, candidateName, requirementTitle, l
             Consent has already been obtained — mark as granted now
           </label>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Expires (optional, max 30 days out)</label>
-            <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="input w-full mt-1" />
+            <label htmlFor="consent-expires" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Expires (optional, max 30 days out)</label>
+            <input id="consent-expires" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="input w-full mt-1" />
           </div>
           <div>
             <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">RTR document (optional, PDF/DOC)</label>
             <div className="flex items-center gap-2 mt-1">
               <label className="flex-1 flex items-center gap-2 border border-dashed border-neutral-300 rounded-md px-3 py-2 cursor-pointer hover:bg-neutral-50 text-[12.5px] text-neutral-600">
-                <Upload className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                <Upload className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
                 <span className="truncate">{file ? file.name : 'Choose file'}</span>
                 <input
                   type="file"

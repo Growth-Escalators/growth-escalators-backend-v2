@@ -51,30 +51,30 @@ export default function OfferDialog({ open, revision, loading = false, error = n
         <>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Currency</label>
-              <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="input w-full mt-1">
+              <label htmlFor="offer-currency" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Currency</label>
+              <select id="offer-currency" value={currency} onChange={(e) => setCurrency(e.target.value)} className="input w-full mt-1">
                 {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Amount *</label>
-              <input ref={firstFieldRef} type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="input w-full mt-1" />
+              <label htmlFor="offer-amount" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Amount *</label>
+              <input id="offer-amount" ref={firstFieldRef} type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="input w-full mt-1" />
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Per</label>
-              <select value={period} onChange={(e) => setPeriod(e.target.value)} className="input w-full mt-1">
+              <label htmlFor="offer-period" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Per</label>
+              <select id="offer-period" value={period} onChange={(e) => setPeriod(e.target.value)} className="input w-full mt-1">
                 {PERIODS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Start date</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input w-full mt-1" />
+              <label htmlFor="offer-start-date" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Start date</label>
+              <input id="offer-start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input w-full mt-1" />
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Expires</label>
-              <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="input w-full mt-1" />
+              <label htmlFor="offer-expires" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Expires</label>
+              <input id="offer-expires" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="input w-full mt-1" />
             </div>
           </div>
           <label className="flex items-center gap-2 text-[12.5px] text-neutral-600">

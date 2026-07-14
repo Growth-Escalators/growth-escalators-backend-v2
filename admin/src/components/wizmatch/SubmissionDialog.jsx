@@ -79,7 +79,7 @@ export default function SubmissionDialog({ open, resend = false, companyContacts
                   onChange={(e) => setRecipient(i, { email: e.target.value })}
                   className="input"
                 />
-                <button type="button" onClick={() => removeRecipient(i)} disabled={recipients.length === 1} className="text-danger-600 disabled:opacity-30 justify-self-end">
+                <button type="button" aria-label="Remove recipient" onClick={() => removeRecipient(i)} disabled={recipients.length === 1} className="text-danger-600 disabled:opacity-30 justify-self-end">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
                 {companyContacts.length > 0 && (
@@ -96,12 +96,12 @@ export default function SubmissionDialog({ open, resend = false, companyContacts
           </div>
           <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-100">
             <div className="col-span-2">
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action</label>
-              <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} className="input w-full mt-1" />
+              <label htmlFor="submission-next-action" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action</label>
+              <input id="submission-next-action" value={nextAction} onChange={(e) => setNextAction(e.target.value)} className="input w-full mt-1" />
             </div>
             <div className="col-span-2">
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action due *</label>
-              <input type="datetime-local" value={nextActionDueAt} onChange={(e) => setNextActionDueAt(e.target.value)} className="input w-full mt-1" />
+              <label htmlFor="submission-next-action-due" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action due *</label>
+              <input id="submission-next-action-due" type="datetime-local" value={nextActionDueAt} onChange={(e) => setNextActionDueAt(e.target.value)} className="input w-full mt-1" />
             </div>
           </div>
         </>

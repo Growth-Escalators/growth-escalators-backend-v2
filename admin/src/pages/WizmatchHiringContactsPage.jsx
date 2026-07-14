@@ -33,7 +33,7 @@ export default function WizmatchHiringContactsPage() {
             type="button"
             onClick={() => setActiveTab(t.id)}
             className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
-              activeTab === t.id ? 'bg-primary-500 text-white' : 'text-neutral-500 hover:bg-neutral-100'
+              activeTab === t.id ? 'bg-primary-600 text-white' : 'text-neutral-500 hover:bg-neutral-100'
             }`}
           >
             {t.label}
@@ -97,7 +97,7 @@ function LinkedContactsTab() {
     <div>
       <div className="mb-4 flex flex-wrap gap-2.5">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input placeholder="Search name, company, email…" value={search} onChange={e => setSearch(e.target.value)} className="input w-[280px] pl-8" />
         </div>
       </div>
@@ -105,7 +105,7 @@ function LinkedContactsTab() {
       {error ? (
         <ErrorRetry message={error} onRetry={load} retrying={loading} />
       ) : loading ? (
-        <div className="card p-8 text-center text-neutral-400">Loading hiring contacts…</div>
+        <div className="card p-8 text-center text-neutral-500">Loading hiring contacts…</div>
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Users}
@@ -137,7 +137,7 @@ function LinkedContactsTab() {
                   <td>
                     {(c.roles || []).length ? (
                       <div className="flex flex-wrap gap-1">{c.roles.slice(0, 2).map(r => <span key={r} className="badge-info text-[10px]">{r.replaceAll('_', ' ')}</span>)}</div>
-                    ) : <span className="text-neutral-400">—</span>}
+                    ) : <span className="text-neutral-500">—</span>}
                   </td>
                   <td><StatusBadge status={c.relationship_stage} /></td>
                   <td className="text-right">{c.active_requirement_count || 0}</td>
@@ -240,7 +240,7 @@ function LinkedContactDetailDrawer({ companyContactId, onClose, onChanged }) {
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end" onClick={onClose}>
         <div className="bg-white w-[560px] max-w-[95vw] h-full shadow-modal flex items-center justify-center" onClick={e => e.stopPropagation()}>
-          <p className="text-neutral-400">Loading hiring contact…</p>
+          <p className="text-neutral-500">Loading hiring contact…</p>
         </div>
       </div>
     );
@@ -250,7 +250,7 @@ function LinkedContactDetailDrawer({ companyContactId, onClose, onChanged }) {
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end" onClick={onClose}>
         <div className="bg-white w-[560px] max-w-[95vw] h-full shadow-modal p-6" onClick={e => e.stopPropagation()}>
-          <div className="flex justify-end mb-4"><button onClick={onClose} className="text-neutral-400 hover:text-neutral-600"><X className="w-5 h-5" /></button></div>
+          <div className="flex justify-end mb-4"><button onClick={onClose} className="text-neutral-500 hover:text-neutral-600"><X className="w-5 h-5" /></button></div>
           <ErrorRetry message={error} onRetry={load} retrying={loading} />
         </div>
       </div>
@@ -268,13 +268,13 @@ function LinkedContactDetailDrawer({ companyContactId, onClose, onChanged }) {
             <h2 className="text-[18px] font-bold text-neutral-900 truncate">{[contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unnamed contact'}</h2>
             <p className="text-[12px] text-neutral-500 mt-0.5">{contact.company_name}</p>
           </div>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-neutral-500 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-5">
           <div className="flex flex-wrap gap-1.5">
             {(contact.roles || []).map(r => <span key={r} className="badge-info text-[10px]">{r.replaceAll('_', ' ')}</span>)}
-            {!(contact.roles || []).length && <span className="text-[11.5px] text-neutral-400">No role tags on file</span>}
+            {!(contact.roles || []).length && <span className="text-[11.5px] text-neutral-500">No role tags on file</span>}
           </div>
 
           <div className="text-[12.5px] text-neutral-600 space-y-1">
@@ -293,26 +293,26 @@ function LinkedContactDetailDrawer({ companyContactId, onClose, onChanged }) {
             <h3 className="text-[13px] font-bold text-neutral-900">Coordination</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Relationship stage</label>
-                <select value={relationshipStage} onChange={e => setRelationshipStage(e.target.value)} className="input w-full mt-1">
+                <label htmlFor="hc-relationship-stage" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Relationship stage</label>
+                <select id="hc-relationship-stage" value={relationshipStage} onChange={e => setRelationshipStage(e.target.value)} className="input w-full mt-1">
                   {RELATIONSHIP_STAGES.map(s => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Owner</label>
-                <select value={ownerUserId} onChange={e => setOwnerUserId(e.target.value)} className="input w-full mt-1">
+                <label htmlFor="hc-owner" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Owner</label>
+                <select id="hc-owner" value={ownerUserId} onChange={e => setOwnerUserId(e.target.value)} className="input w-full mt-1">
                   <option value="">Unassigned</option>
                   {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Dated next action</label>
-              <input value={nextAction} onChange={e => setNextAction(e.target.value)} className="input w-full mt-1" placeholder="e.g. Confirm interview slot for Java role" />
+              <label htmlFor="hc-next-action" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Dated next action</label>
+              <input id="hc-next-action" value={nextAction} onChange={e => setNextAction(e.target.value)} className="input w-full mt-1" placeholder="e.g. Confirm interview slot for Java role" />
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Due</label>
-              <input type="datetime-local" value={nextActionDueAt} onChange={e => setNextActionDueAt(e.target.value)} className="input w-full mt-1" />
+              <label htmlFor="hc-next-action-due" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Due</label>
+              <input id="hc-next-action-due" type="datetime-local" value={nextActionDueAt} onChange={e => setNextActionDueAt(e.target.value)} className="input w-full mt-1" />
             </div>
             <div className="flex justify-between items-center">
               <button onClick={() => setShowDeactivateDialog(true)} className="text-[12.5px] font-semibold text-danger-600 hover:text-danger-700">
@@ -327,7 +327,7 @@ function LinkedContactDetailDrawer({ companyContactId, onClose, onChanged }) {
           <section className="border-t border-neutral-100 pt-4">
             <h3 className="text-[13px] font-bold text-neutral-900 mb-2">Requirements supplied by this person</h3>
             {(requirements?.length || 0) === 0 ? (
-              <p className="text-[12px] text-neutral-400">No requirements attributed to this person yet.</p>
+              <p className="text-[12px] text-neutral-500">No requirements attributed to this person yet.</p>
             ) : (
               <div className="space-y-2">
                 {requirements.map(r => (
@@ -348,7 +348,7 @@ function LinkedContactDetailDrawer({ companyContactId, onClose, onChanged }) {
           <section className="border-t border-neutral-100 pt-4">
             <h3 className="text-[13px] font-bold text-neutral-900 mb-2">Open work</h3>
             {(tasks?.length || 0) === 0 ? (
-              <p className="text-[12px] text-neutral-400">No open tasks linked to this person.</p>
+              <p className="text-[12px] text-neutral-500">No open tasks linked to this person.</p>
             ) : (
               <div className="space-y-1.5">
                 {tasks.map(t => (
@@ -364,7 +364,7 @@ function LinkedContactDetailDrawer({ companyContactId, onClose, onChanged }) {
           <section className="border-t border-neutral-100 pt-4">
             <h3 className="text-[13px] font-bold text-neutral-900 mb-2">Activity</h3>
             {(events?.length || 0) === 0 ? (
-              <p className="text-[12px] text-neutral-400">No activity recorded yet.</p>
+              <p className="text-[12px] text-neutral-500">No activity recorded yet.</p>
             ) : (
               <div className="space-y-1.5">
                 {events.slice(0, 15).map(e => (
@@ -514,7 +514,7 @@ function DiscoveryQueueTab() {
     <div>
       <div className="mb-4 flex flex-wrap gap-2.5">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input placeholder="Search name, title, company…" value={search} onChange={e => setSearch(e.target.value)} className="input w-[280px] pl-8" />
         </div>
       </div>
@@ -522,7 +522,7 @@ function DiscoveryQueueTab() {
       {error ? (
         <ErrorRetry message={error} onRetry={load} retrying={loading} />
       ) : loading ? (
-        <div className="card p-8 text-center text-neutral-400">Loading discovery queue…</div>
+        <div className="card p-8 text-center text-neutral-500">Loading discovery queue…</div>
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Users}
@@ -556,7 +556,7 @@ function DiscoveryQueueTab() {
                   <td><StatusBadge status={c.status} /></td>
                   <td className="text-right" onClick={e => e.stopPropagation()}>
                     {!isPersisted(c) ? (
-                      <span className="text-[11px] text-neutral-400" title="This candidate is only computed from CRM contact matching so far — it has no discovery-run or manual-add record yet, so there is nothing to approve/reject/link/delete until one is created.">
+                      <span className="text-[11px] text-neutral-500" title="This candidate is only computed from CRM contact matching so far — it has no discovery-run or manual-add record yet, so there is nothing to approve/reject/link/delete until one is created.">
                         Not yet reviewable
                       </span>
                     ) : (
@@ -577,7 +577,7 @@ function DiscoveryQueueTab() {
                           </button>
                         )}
                         {!isLinked(c) && (
-                          <button disabled={busyId === c.id} onClick={() => setDeleteTarget(c)} className="text-neutral-400 hover:text-danger-600" title="Delete permanently">
+                          <button disabled={busyId === c.id} onClick={() => setDeleteTarget(c)} className="text-neutral-500 hover:text-danger-600" title="Delete permanently">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         )}
@@ -599,7 +599,7 @@ function DiscoveryQueueTab() {
                 <h2 className="text-[18px] font-bold text-neutral-900 truncate">{selected.name}</h2>
                 <p className="text-[12px] text-neutral-500 mt-0.5">{selected.title || 'No title on file'} · {selected.companyName}</p>
               </div>
-              <button onClick={() => setSelected(null)} className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
+              <button onClick={() => setSelected(null)} aria-label="Close" className="text-neutral-500 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-6 space-y-5">
               <div className="flex items-center gap-2">

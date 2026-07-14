@@ -208,7 +208,7 @@ function KpiCard({ label, value, sub }) {
       <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary-500" />
       <div className="text-[12.5px] text-neutral-500 font-medium">{label}</div>
       <div className="text-[26px] font-bold text-neutral-900 mt-1 tracking-tight">{value}</div>
-      {sub && <div className="text-xs text-neutral-400 mt-1">{sub}</div>}
+      {sub && <div className="text-xs text-neutral-500 mt-1">{sub}</div>}
     </div>
   );
 }
@@ -240,7 +240,7 @@ function FunnelRow({ item, max }) {
 function DeliveryFunnelRow({ stage, maxCount }) {
   if (!stage.supported) {
     return (
-      <div className="grid grid-cols-[130px_1fr_130px] gap-3 items-center opacity-80" title={stage.note}>
+      <div className="grid grid-cols-[130px_1fr_130px] gap-3 items-center" title={stage.note}>
         <div>
           <p className="text-sm font-semibold text-neutral-500">{stage.label}</p>
         </div>
@@ -275,7 +275,7 @@ function DeliveryFunnelRow({ stage, maxCount }) {
           <span className="text-xs font-bold text-white">{count}</span>
         </div>
       </div>
-      <span className="text-[11px] text-neutral-400 truncate" title={stage.note}>real data</span>
+      <span className="text-[11px] text-neutral-500 truncate" title={stage.note}>real data</span>
     </div>
   );
 }
@@ -420,7 +420,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
   const filtersActive = filters.company || filters.skill || filters.status || filters.assignedUserId || sourceFilter
     || filters.from !== defaultFrom() || filters.to !== defaultTo();
 
-  if (loading) return <div className="p-6"><p className="text-neutral-400">Loading...</p></div>;
+  if (loading) return <div className="p-6"><p className="text-neutral-500">Loading...</p></div>;
 
   return (
     <div className="p-6">
@@ -444,7 +444,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
           {filtersActive && (
             <button
               onClick={() => { setFilters({ ...DEFAULT_FILTERS, from: defaultFrom(), to: defaultTo() }); setSourceFilter(''); }}
-              className="text-[12px] text-neutral-400 hover:text-neutral-600 ml-auto"
+              className="text-[12px] text-neutral-500 hover:text-neutral-600 ml-auto"
             >
               Clear filters
             </button>
@@ -488,14 +488,14 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
               {sourceOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
             </select>
           </label>
-          <label className="text-[11px] text-neutral-400 flex flex-col gap-1" title="Filtering the whole funnel by a single requirement isn't wired to the backend yet — no funnel endpoint accepts a requirement_id parameter.">
+          <label className="text-[11px] text-neutral-500 flex flex-col gap-1" title="Filtering the whole funnel by a single requirement isn't wired to the backend yet — no funnel endpoint accepts a requirement_id parameter.">
             Requirement
             <select disabled className="input w-auto opacity-50 cursor-not-allowed">
               <option>Not wired yet</option>
             </select>
           </label>
         </div>
-        <p className="text-[11px] text-neutral-400 mt-3">
+        <p className="text-[11px] text-neutral-500 mt-3">
           From/To scope the <b>Job Lead</b> and <b>Requirement/Match-adjacent</b> discovery metrics (GET /api/wizmatch/analytics + /analytics/roi).
           Company, Skill, Status and Recruiter scope the <b>Requirement</b> stage and table below (GET /api/wizmatch/requirements).
           Source filters the signal/source breakdown tables. <b>Submission → Start, SLA/aging, time-to-start and revenue figures are all-time totals</b> — GET /api/wizmatch/staffing/analytics does not accept any query filters yet.
@@ -534,7 +534,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
         )}
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
           {deliveryFunnel.filter((st) => !st.supported).map((st) => (
-            <p key={st.key} className="text-[11px] text-neutral-400 bg-neutral-50 rounded-md px-2.5 py-1.5">
+            <p key={st.key} className="text-[11px] text-neutral-500 bg-neutral-50 rounded-md px-2.5 py-1.5">
               <b className="text-neutral-500">{st.label} not available:</b> {st.note}
             </p>
           ))}
@@ -618,7 +618,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
               <KpiCard label="Slowest" value={formatDays(delivery.timeToFill.slowest_days)} />
             </div>
           )}
-          <p className="text-[11px] text-neutral-400 mt-3 flex items-start gap-1.5">
+          <p className="text-[11px] text-neutral-500 mt-3 flex items-start gap-1.5">
             <Info className="w-3.5 h-3.5 shrink-0 mt-px" />
             Time to first profile / time to submission / time to interview / time to offer are not available — no endpoint exposes per-stage transition timestamps for these yet.
           </p>
@@ -653,7 +653,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
             <p className="rounded-md bg-neutral-50 px-3 py-2">Deterministic before AI: {roi ? (roi.guardrails?.deterministicBeforeAi ? 'yes' : 'no') : '—'}</p>
             <p className="rounded-md bg-neutral-50 px-3 py-2">Scope: internal IT/Tech staffing only</p>
           </div>
-          <p className="text-[11px] text-neutral-400 mt-3">
+          <p className="text-[11px] text-neutral-500 mt-3">
             Technical deliverability (SPF/DKIM/DMARC, domain pause state) lives on{' '}
             <Link to="/wizmatch/system?tab=domains" className="text-primary-600 font-medium hover:underline">System → Deliverability / Domains</Link>, not here.
           </p>
@@ -718,7 +718,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
                     ))}
                   </tbody>
                 </table>
-                {(delivery?.recruiterPerformance || []).length === 0 && <p className="text-neutral-400 text-sm">No submissions recorded yet</p>}
+                {(delivery?.recruiterPerformance || []).length === 0 && <p className="text-neutral-500 text-sm">No submissions recorded yet</p>}
               </>
             )}
           </div>
@@ -736,7 +736,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
                     <span className="text-sm font-medium text-neutral-900">{r.count}</span>
                   </div>
                 ))}
-                {(delivery?.rejectionReasons || []).length === 0 && <p className="text-neutral-400 text-sm">No rejections or withdrawals recorded yet</p>}
+                {(delivery?.rejectionReasons || []).length === 0 && <p className="text-neutral-500 text-sm">No rejections or withdrawals recorded yet</p>}
               </>
             )}
           </div>
@@ -758,7 +758,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
                     </div>
                   </div>
                 ))}
-                {signalSourceRows.length === 0 && <p className="text-neutral-400 text-sm">{sourceFilter ? 'No signals for this source' : 'No signals yet'}</p>}
+                {signalSourceRows.length === 0 && <p className="text-neutral-500 text-sm">{sourceFilter ? 'No signals for this source' : 'No signals yet'}</p>}
               </>
             )}
           </div>
@@ -778,7 +778,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
                     </div>
                   </div>
                 ))}
-                {staffingSourceRows.length === 0 && <p className="text-neutral-400 text-sm">{sourceFilter ? 'No staffing outcomes for this source' : 'No candidate submissions yet'}</p>}
+                {staffingSourceRows.length === 0 && <p className="text-neutral-500 text-sm">{sourceFilter ? 'No staffing outcomes for this source' : 'No candidate submissions yet'}</p>}
               </>
             )}
           </div>
@@ -818,7 +818,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
                 </tbody>
               </table>
               {requirementsSummary && requirementsSummary.total > (requirementsSummary.items || []).length && (
-                <p className="text-[11.5px] text-neutral-400 mt-2">Showing {(requirementsSummary.items || []).length} of {requirementsSummary.total}.</p>
+                <p className="text-[11.5px] text-neutral-500 mt-2">Showing {(requirementsSummary.items || []).length} of {requirementsSummary.total}.</p>
               )}
             </>
           )}
@@ -844,7 +844,7 @@ export default function WizmatchAnalyticsPage({ demoMode = false }) {
                   <span className="text-sm text-success-600 w-28 text-right font-medium">{formatCurrency(p.monthly_value || 0)}</span>
                 </div>
               ))}
-              {(analytics?.pipeline || []).length === 0 && <p className="text-neutral-400 text-sm">No placements yet</p>}
+              {(analytics?.pipeline || []).length === 0 && <p className="text-neutral-500 text-sm">No placements yet</p>}
             </>
           )}
         </div>

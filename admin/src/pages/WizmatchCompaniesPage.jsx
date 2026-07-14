@@ -66,7 +66,7 @@ export default function WizmatchCompaniesPage() {
 
       <div className="mb-4 flex flex-wrap gap-2.5">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             placeholder="Search name or domain…"
             value={search}
@@ -75,14 +75,14 @@ export default function WizmatchCompaniesPage() {
           />
         </div>
         {search && (
-          <button onClick={() => setSearch('')} className="text-[12.5px] text-neutral-400 hover:text-neutral-600">Clear</button>
+          <button onClick={() => setSearch('')} className="text-[12.5px] text-neutral-500 hover:text-neutral-600">Clear</button>
         )}
       </div>
 
       {error ? (
         <ErrorRetry message={error} onRetry={load} retrying={loading} />
       ) : loading && items.length === 0 ? (
-        <div className="card p-8 text-center text-neutral-400">Loading companies…</div>
+        <div className="card p-8 text-center text-neutral-500">Loading companies…</div>
       ) : items.length === 0 ? (
         <EmptyState
           icon={Building2}
@@ -113,12 +113,12 @@ export default function WizmatchCompaniesPage() {
                   <td className="text-right">
                     {c.open_requirement_count > 0
                       ? <span className="badge-info">{c.open_requirement_count}</span>
-                      : <span className="text-neutral-400">0</span>}
+                      : <span className="text-neutral-500">0</span>}
                   </td>
                   <td className="text-right">
                     {c.contact_count > 0
                       ? <span className="badge-success">{c.contact_count}</span>
-                      : <span className="text-neutral-400">0</span>}
+                      : <span className="text-neutral-500">0</span>}
                   </td>
                 </tr>
               ))}
@@ -203,7 +203,7 @@ function CompanyDetailDrawer({ companyId, onClose, onDeleted, onChanged }) {
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end" onClick={onClose}>
         <div className="bg-white w-[600px] max-w-[95vw] h-full shadow-modal flex items-center justify-center" onClick={e => e.stopPropagation()}>
-          <p className="text-neutral-400">Loading company…</p>
+          <p className="text-neutral-500">Loading company…</p>
         </div>
       </div>
     );
@@ -213,7 +213,7 @@ function CompanyDetailDrawer({ companyId, onClose, onDeleted, onChanged }) {
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end" onClick={onClose}>
         <div className="bg-white w-[600px] max-w-[95vw] h-full shadow-modal p-6" onClick={e => e.stopPropagation()}>
-          <div className="flex justify-end mb-4"><button onClick={onClose} className="text-neutral-400 hover:text-neutral-600"><X className="w-5 h-5" /></button></div>
+          <div className="flex justify-end mb-4"><button onClick={onClose} className="text-neutral-500 hover:text-neutral-600"><X className="w-5 h-5" /></button></div>
           <ErrorRetry message={error} onRetry={load} retrying={loading} />
         </div>
       </div>
@@ -234,7 +234,7 @@ function CompanyDetailDrawer({ companyId, onClose, onDeleted, onChanged }) {
               {company.domain || 'No domain on file'}{company.country ? ` · ${company.country}` : ''}
             </p>
           </div>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-neutral-500 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-6">
@@ -338,7 +338,7 @@ function CompanyDetailDrawer({ companyId, onClose, onDeleted, onChanged }) {
           <section>
             <h3 className="text-[13px] font-bold text-neutral-900 mb-2">Open work</h3>
             {(tasks?.length || 0) === 0 ? (
-              <p className="text-[12px] text-neutral-400">No open tasks linked to this company.</p>
+              <p className="text-[12px] text-neutral-500">No open tasks linked to this company.</p>
             ) : (
               <div className="space-y-1.5">
                 {tasks.map(t => (
@@ -354,7 +354,7 @@ function CompanyDetailDrawer({ companyId, onClose, onDeleted, onChanged }) {
           <section>
             <h3 className="text-[13px] font-bold text-neutral-900 mb-2">Activity</h3>
             {(events?.length || 0) === 0 ? (
-              <p className="text-[12px] text-neutral-400">No activity recorded yet.</p>
+              <p className="text-[12px] text-neutral-500">No activity recorded yet.</p>
             ) : (
               <div className="space-y-1.5">
                 {events.slice(0, 15).map(e => (
@@ -446,7 +446,7 @@ function DiscoveryPreviewPanel({ companyId, onClose, onDiscovered, onError }) {
     <div className="card p-3 mb-3 space-y-2.5 bg-neutral-50/50">
       <div className="flex items-center justify-between">
         <p className="text-[12px] text-neutral-500">Preview is read-only — it shows eligibility, provider order and estimated cost without calling a provider.</p>
-        <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-4 h-4" /></button>
+        <button onClick={onClose} aria-label="Close" className="text-neutral-500 hover:text-neutral-600 shrink-0"><X className="w-4 h-4" /></button>
       </div>
       {feedback && (
         <div role="alert" className="text-[12px] text-danger-600 bg-danger-500/10 border border-danger-500/30 rounded-md px-2.5 py-1.5">{feedback}</div>
@@ -555,9 +555,9 @@ function AddHiringContactPanel({ companyId, onClose, onAdded, onError }) {
         </div>
       )}
       {searching ? (
-        <p className="text-[12px] text-neutral-400">Searching…</p>
+        <p className="text-[12px] text-neutral-500">Searching…</p>
       ) : results.length === 0 ? (
-        <p className="text-[12px] text-neutral-400">{search ? 'No CRM contacts match this search.' : 'Type to search CRM contacts.'}</p>
+        <p className="text-[12px] text-neutral-500">{search ? 'No CRM contacts match this search.' : 'Type to search CRM contacts.'}</p>
       ) : (
         <div className="max-h-40 overflow-y-auto space-y-1">
           {results.map(r => (
