@@ -2,8 +2,9 @@
 
 ## Active task
 
-**Wizmatch results-first sourcing — SearchAPI.io, TheirStack, ATS and named-POC provider release is
-staging-qualified. Deploy the exact reviewed commits and activate the two-user production pilot.**
+**Wizmatch results-first sourcing — provider release is live for the Jatin/Kanishk production
+pilot. Review genuine signals and configure approved ATS boards; enable X-Ray only after the first
+genuine accepted, skill-reviewed requirement exists.**
 
 Work only in `/Users/jatinagrawal/repo-comparison/v2-wizmatch-phase0-trust` on
 `codex/wizmatch-phase0-trust`. Preserve the unrelated dirty workspace at
@@ -40,16 +41,24 @@ Work only in `/Users/jatinagrawal/repo-comparison/v2-wizmatch-phase0-trust` on
 - Legacy Wizmatch automation, sending, paid discovery and Google fallback remain off. No outreach,
   consent, submission or production business record was created.
 
+## Production activation
+
+- `05a5c5a` is live. Code deployment `5e8d1302-2c50-4a2b-b7b3-4f3e1e160023` and provider-flag
+  deployment `8d68a585-5277-4be4-8e90-cc830e1b4036` both reached `SUCCESS`.
+- Source master, TheirStack, ATS and POC discovery are active. SearchAPI/TheirStack accounts validate;
+  X-Ray is configured but off. Legacy automation, sending, paid discovery and Google fallback are off.
+- The first production TheirStack run fetched/inserted 15 genuine public target-role signals with no
+  errors or duplicates. Their 15 provider IDs are distinct. ATS ran safely but polled zero companies
+  because no production company has an approved ATS board yet.
+- Production Signals UI passed desktop/tablet/390px with no overflow, console errors or 5xx. Health
+  and database are green; sampled traffic had zero 5xx, p95 73 ms and healthy CPU/memory.
+
 ## Exact next action
 
-1. Verify production health and branch freshness.
-2. Push the exact reviewed branch to `main` and wait for Railway terminal `SUCCESS` with new source
-   flags still off.
-3. Inject the validated TheirStack/SearchAPI secrets directly into production Railway secrets.
-4. Enable source master + TheirStack + ATS + POC for Jatin/Kanishk; leave X-Ray off until a genuine
-   accepted, skill-reviewed requirement exists.
-5. Run one capped genuine TheirStack cycle, verify run audit/deduplication, then activate manual
-   requirement-first X-Ray only for a genuine requirement.
+Jatin/Kanishk review the 15 signals in Job Signals, qualify useful ones, run Find POC, verify a genuine
+contact channel and promote only real demand. Configure ATS type/slug/board URL on approved Company
+360 records. Once one genuine requirement is accepted and has reviewed mandatory skills, enable
+`WIZMATCH_XRAY_CANDIDATE_ENABLED=true` and run one manual requirement-first search.
 
 Never add users, enable pilot-all, sending, paid discovery, Google fallback, legacy automation,
 automatic requirements, outreach, consent, shortlist or submission. Never delete production data.

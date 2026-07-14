@@ -2451,3 +2451,29 @@ Built in parallel via 3 isolated-worktree subagents, reviewed + merged + deploye
 **Next**
 - Push `c293b88` + `142eb51`, deploy with source flags off, then progressively activate
   TheirStack → ATS/POC → requirement-first X-Ray for Jatin/Kanishk only.
+
+## 2026-07-14 — Provider production activation — Codex — LIVE PRODUCTION
+
+**What went live**
+- Pushed `c293b88`, `142eb51` and handoff commit `05a5c5a`; code deployment
+  `5e8d1302-2c50-4a2b-b7b3-4f3e1e160023` reached `SUCCESS` with providers off.
+- Securely replaced the invalid TheirStack secret and added SearchAPI without displaying values.
+  Provider activation deployment `8d68a585-5277-4be4-8e90-cc830e1b4036` reached `SUCCESS`.
+- Enabled source master, TheirStack, ATS and human-triggered POC research for Jatin/Kanishk. X-Ray
+  is configured but remains off until a genuine accepted, skill-reviewed requirement exists.
+
+**Production evidence**
+- First capped TheirStack run: 15 fetched, 15 inserted, zero duplicate/error/rejection; all 15 new
+  provider IDs are distinct and titles match the reviewed SAP/Java/JavaScript/frontend scope.
+- ATS manual smoke: healthy, zero errors, zero companies because no production company has an
+  approved ATS board. No company was guessed or auto-configured.
+- Desktop/tablet/390px Signals UI passed with active provider state, allowance and run evidence;
+  no horizontal overflow, console error or 5xx. Health/database are green; sampled p95 is 73 ms.
+- Legacy automation, sending, paid discovery, Google fallback, automatic acceptance/outreach/
+  submission remain off. No production record/document was deleted.
+
+**Operations**
+- A 15-minute/one-hour heartbeat and the updated six-hour 48-hour read-only monitor cover provider
+  health, quota, duplicates, access and resource pressure.
+- Next human action: review the imported signals, verify POCs/channels, configure approved ATS
+  boards and create genuine accepted requirements before the first manual X-Ray run.
