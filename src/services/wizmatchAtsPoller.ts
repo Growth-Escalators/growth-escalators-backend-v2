@@ -16,6 +16,7 @@
 import { pool } from '../db/index';
 import logger from '../utils/logger';
 import { isWizmatchRelevantRole } from './wizmatchRoleRelevance';
+import { createSourceRun, finishSourceRun, ingestWizmatchSignals } from './wizmatchSourcing';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ interface AtsCompany {
 }
 
 interface IngestedJob {
+  provider_id: string | null;
   job_title: string;
   job_url: string;
   source: string;
@@ -48,6 +50,7 @@ interface PollResult {
   found: number;
   inserted: number;
   updated: number;
+  closed: number;
   error: string | null;
 }
 
@@ -63,7 +66,7 @@ interface GreenhouseJob {
   metadata: Array<{ name: string; value: string }> | null;
 }
 
-async function pollGreenhouse(slug: string): Promise<IngestedJob[]> {
+export async function pollGreenhouse(slug: string): Promise<IngestedJob[]> {
   const url = `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=true`;
   const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`Greenhouse API ${res.status} for slug "${slug}"`);
@@ -76,6 +79,7 @@ async function pollGreenhouse(slug: string): Promise<IngestedJob[]> {
 
     return {
       job_title: job.title,
+      provider_id: String(job.id),
       job_url: job.absolute_url,
       source: 'greenhouse',
       posted_at: job.updated_at,
@@ -99,7 +103,7 @@ interface LeverPosting {
   categories: { location: string; team: string; commitment: string } | null;
 }
 
-async function pollLever(slug: string): Promise<IngestedJob[]> {
+export async function pollLever(slug: string): Promise<IngestedJob[]> {
   const url = `https://api.lever.co/v0/postings/${slug}`;
   const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`Lever API ${res.status} for slug "${slug}"`);
@@ -107,6 +111,7 @@ async function pollLever(slug: string): Promise<IngestedJob[]> {
 
   return (data || []).map((posting) => ({
     job_title: posting.text,
+    provider_id: posting.id,
     job_url: posting.hostedUrl,
     source: 'lever',
     posted_at: new Date(posting.createdAt).toISOString(),
@@ -123,18 +128,19 @@ async function pollLever(slug: string): Promise<IngestedJob[]> {
 // Ashby doesn't have a stable public JSON API — try the jobs endpoint first,
 // fall back to scraping the board page HTML.
 
-async function pollAshby(slug: string): Promise<IngestedJob[]> {
+export async function pollAshby(slug: string): Promise<IngestedJob[]> {
   // Try the API first
   try {
     const apiUrl = `https://api.ashby.com/v1/${slug}/jobs`;
     const res = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) });
     if (res.ok) {
       const data = await res.json() as { jobs?: Array<{
-        title: string; location: string; jobUrl: string; postedAt: string; employmentType: string;
+        id?: string; title: string; location: string; jobUrl: string; postedAt: string; employmentType: string;
       }> };
       if (data.jobs && data.jobs.length > 0) {
         return data.jobs.map((job) => ({
           job_title: job.title,
+          provider_id: job.id || job.jobUrl,
           job_url: job.jobUrl,
           source: 'ashby',
           posted_at: job.postedAt,
@@ -156,11 +162,12 @@ async function pollAshby(slug: string): Promise<IngestedJob[]> {
   const res = await fetch(boardUrl, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`Ashby API ${res.status} for slug "${slug}"`);
   const data = await res.json() as { jobs?: Array<{
-    title: string; locationName: string; jobUrl: string; publishedDate: string;
+    id?: string; title: string; locationName: string; jobUrl: string; publishedDate: string;
   }> };
 
   return (data.jobs || []).map((job) => ({
     job_title: job.title,
+    provider_id: job.id || job.jobUrl,
     job_url: job.jobUrl,
     source: 'ashby',
     posted_at: job.publishedDate,
@@ -234,7 +241,7 @@ export function extractKeywords(title: string, extra: string): string[] {
 
 // ── Main poller ──────────────────────────────────────────────────────────────
 
-export async function pollAtsBoards(): Promise<{
+export async function pollAtsBoards(options: { trigger?: 'manual' | 'scheduled'; requestedBy?: string | null } = {}): Promise<{
   companies_polled: number;
   jobs_found: number;
   jobs_inserted: number;
@@ -248,15 +255,19 @@ export async function pollAtsBoards(): Promise<{
     return { companies_polled: 0, jobs_found: 0, jobs_inserted: 0, jobs_updated: 0, errors: 0, results: [] };
   }
 
+  const run = await createSourceRun({ tenantId, provider: 'ats', trigger: options.trigger, requestedBy: options.requestedBy });
+
   const companies = (await pool.query(
     `SELECT id, tenant_id, name, domain, ats_type, ats_slug, ats_board_url
      FROM wizmatch_companies
-     WHERE tenant_id = $1 AND ats_type IS NOT NULL AND ats_type != 'none' AND ats_slug IS NOT NULL`,
+     WHERE tenant_id = $1 AND ats_type IS NOT NULL AND ats_type != 'none' AND ats_slug IS NOT NULL
+       AND ats_board_url IS NOT NULL`,
     [tenantId],
   )).rows as AtsCompany[];
 
   if (companies.length === 0) {
     logger.info('[wizmatch-ats] No companies with ATS configured');
+    await finishSourceRun(run.id, tenantId, { status: 'skipped', fetched: 0 });
     return { companies_polled: 0, jobs_found: 0, jobs_inserted: 0, jobs_updated: 0, errors: 0, results: [] };
   }
 
@@ -273,6 +284,7 @@ export async function pollAtsBoards(): Promise<{
       found: 0,
       inserted: 0,
       updated: 0,
+      closed: 0,
       error: null,
     };
 
@@ -313,39 +325,42 @@ export async function pollAtsBoards(): Promise<{
       result.found = jobs.length;
       totalFound += jobs.length;
 
-      // Upsert each job — dedupe by job_url
+      // Shared ingestion applies provider-id, URL and normalized fingerprint dedupe.
       for (const job of jobs) {
         try {
-          // Check if already exists
-          const existing = await pool.query(
-            `UPDATE wizmatch_job_signals
-             SET last_seen_at = NOW(),
-                 days_open = GREATEST(days_open, EXTRACT(EPOCH FROM (NOW() - first_seen_at))/86400)::int
-             WHERE tenant_id = $1 AND job_url = $2
-             RETURNING id`,
-            [tenantId, job.job_url],
-          );
-          if (existing.rows.length > 0) {
-            result.updated++;
-            totalUpdated++;
-          } else {
-            await pool.query(
-              `INSERT INTO wizmatch_job_signals
-               (tenant_id, company_id, job_title, job_url, source, posted_at,
-                employment_type, keywords, location, raw_text, status, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'new', NOW())`,
-              [
-                tenantId, company.id, job.job_title, job.job_url, job.source,
-                job.posted_at, job.employment_type, job.keywords, job.location, job.raw_text,
-              ],
-            );
-            result.inserted++;
-            totalInserted++;
-          }
+          const ingested = await ingestWizmatchSignals(tenantId, [{
+            ...job,
+            provider_id: job.provider_id || undefined,
+            posted_at: job.posted_at || undefined,
+            employment_type: job.employment_type || undefined,
+            location: job.location || undefined,
+            raw_text: job.raw_text || undefined,
+            company_domain: job.company_domain || undefined,
+          }]);
+          result.inserted += ingested.inserted;
+          result.updated += ingested.updated;
+          totalInserted += ingested.inserted;
+          totalUpdated += ingested.updated;
         } catch {
           // Per-job error — continue
         }
       }
+
+      // Keep history but remove disappeared public postings from active queues.
+      // A later reappearance is still deduplicated by provider ID and can be
+      // reviewed explicitly; nothing is deleted.
+      const liveProviderIds = jobs.map((job) => job.provider_id).filter((id): id is string => Boolean(id));
+      const closed = await pool.query(
+        `UPDATE wizmatch_job_signals
+         SET status='dead',score_breakdown=COALESCE(score_breakdown,'{}'::jsonb)||$5::jsonb,last_seen_at=NOW()
+         WHERE tenant_id=$1 AND company_id=$2 AND source=$3
+           AND status IN ('new','scored','enriched','matched')
+           AND NOT (COALESCE(provider_id,'') = ANY($4::text[]))
+         RETURNING id`,
+        [company.tenant_id, company.id, company.ats_type, liveProviderIds,
+          JSON.stringify({ atsState: 'closed_or_missing', detectedAt: new Date().toISOString() })],
+      );
+      result.closed = closed.rows.length;
     } catch (e) {
       result.error = e instanceof Error ? e.message : String(e);
       totalErrors++;
@@ -360,6 +375,11 @@ export async function pollAtsBoards(): Promise<{
   logger.info(
     `[wizmatch-ats] Polled ${companies.length} companies: ${totalFound} jobs found, ${totalInserted} new, ${totalUpdated} updated, ${totalErrors} errors`,
   );
+
+  await finishSourceRun(run.id, tenantId, {
+    status: totalErrors ? 'partial' : 'succeeded', fetched: totalFound, inserted: totalInserted,
+    updated: totalUpdated, duplicates: totalUpdated, rejected: 0, errors: totalErrors, quotaConsumed: 0,
+  });
 
   return {
     companies_polled: companies.length,

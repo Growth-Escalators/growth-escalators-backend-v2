@@ -38,6 +38,16 @@ describe('Wizmatch automation isolation', () => {
     expect(status.staffingRemindersEnabled).toBe(true);
   });
 
+  it('keeps results-first sourcing independent from legacy automation', () => {
+    const status = getWizmatchAutomationStatus({
+      ...base,
+      WIZMATCH_SOURCE_AUTOMATION_ENABLED: 'true',
+      WIZMATCH_ATS_POLLING_ENABLED: 'true',
+    });
+    expect(status.legacyAutomationEnabled).toBe(false);
+    expect(status.sourcing).toMatchObject({ masterEnabled: true, atsEnabled: true, theirstackEnabled: false });
+  });
+
   it('honors the master background-job gate', () => {
     expect(getWizmatchAutomationStatus({
       ...base,

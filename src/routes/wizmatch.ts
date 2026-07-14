@@ -117,7 +117,18 @@ import {
 import logger from '../utils/logger';
 import { isSafeFetchHost } from '../utils/ssrfGuard';
 import { mineGithubCandidates } from '../services/wizmatchGithubMiner';
-import { runXrayScrape } from '../services/wizmatchXrayScraper';
+import { runRequirementXray, runXrayScrape } from '../services/wizmatchXrayScraper';
+import { importTheirStackJobs, previewTheirStackImport } from '../services/wizmatchTheirStackImporter';
+import { detectAtsType, pollAtsBoards } from '../services/wizmatchAtsPoller';
+import {
+  discoverFreePocsForSignal,
+  getWizmatchSourcingConfig,
+  ingestWizmatchSignals,
+  promoteSignalToRequirement,
+  qualifySignalAndCreatePocTask,
+  rejectSignal,
+  withWizmatchSourceLock,
+} from '../services/wizmatchSourcing';
 
 const router = Router();
 
@@ -1434,6 +1445,8 @@ async function fetchCommandCenterRequirements(tenantId: string, limit: number): 
      LEFT JOIN wizmatch_companies comp ON comp.id = r.company_id AND comp.tenant_id = r.tenant_id
      WHERE r.tenant_id = $1
        AND r.status <> 'closed'
+       AND LOWER(r.title) NOT LIKE 'zz audit test%'
+       AND LOWER(r.title) NOT LIKE '%(delete me)%'
      ORDER BY CASE r.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END,
               r.updated_at DESC
      LIMIT $2`,
@@ -1726,6 +1739,8 @@ async function fetchCandidateIntelligenceInputs(tenantId: string, limit: number,
      FROM wizmatch_candidates wc
      JOIN contacts c ON c.id = wc.contact_id
      WHERE wc.tenant_id = $1
+       AND EXISTS (SELECT 1 FROM wizmatch_candidate_skills verified_skill
+                   WHERE verified_skill.tenant_id=wc.tenant_id AND verified_skill.candidate_id=wc.id AND verified_skill.verified=true)
        ${candidateFilter}
      ORDER BY CASE WHEN wc.availability_status = 'available' THEN 0 ELSE 1 END,
               wc.is_wizmatch_certified DESC,
@@ -1779,11 +1794,13 @@ async function fetchCommandCenterMetrics(tenantId: string): Promise<Omit<Command
         FROM wizmatch_job_signals
         WHERE tenant_id = $1 AND status NOT IN ('dead', 'placed') AND COALESCE(score, 0) >= 7) AS priority_signals,
        (SELECT COUNT(*)::int
-        FROM wizmatch_candidates
-        WHERE tenant_id = $1 AND availability_status = 'available') AS available_candidates,
+        FROM wizmatch_candidates wc
+        WHERE tenant_id = $1 AND availability_status = 'available'
+          AND EXISTS (SELECT 1 FROM wizmatch_candidate_skills cs WHERE cs.tenant_id=wc.tenant_id AND cs.candidate_id=wc.id AND cs.verified=true)) AS available_candidates,
        (SELECT COUNT(*)::int
         FROM wizmatch_requirements
-        WHERE tenant_id = $1 AND status <> 'closed') AS open_requirements,
+        WHERE tenant_id = $1 AND status <> 'closed'
+          AND LOWER(title) NOT LIKE 'zz audit test%' AND LOWER(title) NOT LIKE '%(delete me)%') AS open_requirements,
        (SELECT COUNT(*)::int
         FROM wizmatch_placements
         WHERE tenant_id = $1 AND status IN ('submitted', 'interviewing', 'offered', 'started')) AS active_placements,
@@ -2452,7 +2469,8 @@ router.get('/candidate-intelligence/queue', async (req: Request, res: Response) 
   const limit = Math.min(Number(req.query.limit) || 50, 100);
   const [inputs, totalResult] = await Promise.all([
     fetchCandidateIntelligenceInputs(tenantId, limit),
-    pool.query('SELECT COUNT(*)::int AS total FROM wizmatch_candidates WHERE tenant_id = $1', [tenantId]),
+    pool.query(`SELECT COUNT(*)::int AS total FROM wizmatch_candidates wc WHERE tenant_id = $1
+      AND EXISTS (SELECT 1 FROM wizmatch_candidate_skills cs WHERE cs.tenant_id=wc.tenant_id AND cs.candidate_id=wc.id AND cs.verified=true)`, [tenantId]),
   ]);
   const items = rankCandidateIntelligenceQueue(inputs);
   res.json({
@@ -2579,7 +2597,8 @@ router.get('/requirement-priority/queue', async (req: Request, res: Response) =>
     buildRequirementPriorityInputs(tenantId, limit),
     pool.query(
       `SELECT COUNT(*)::int AS total FROM wizmatch_requirements
-       WHERE tenant_id = $1 AND status <> 'closed'`,
+       WHERE tenant_id = $1 AND status <> 'closed'
+         AND LOWER(title) NOT LIKE 'zz audit test%' AND LOWER(title) NOT LIKE '%(delete me)%'`,
       [tenantId],
     ),
   ]);
@@ -3743,6 +3762,132 @@ router.get('/command-center', async (req: Request, res: Response) => {
 // SECTION 1 — SIGNAL ROUTES
 // ============================================================
 
+router.get('/sourcing/status', async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId;
+  const config = getWizmatchSourcingConfig();
+  const [latest, providers] = await Promise.all([pool.query(
+    `SELECT DISTINCT ON (provider) provider,status,started_at,finished_at,fetched_count,inserted_count,updated_count,
+            duplicate_count,rejected_count,quota_consumed,error_message
+     FROM wizmatch_source_runs WHERE tenant_id=$1 ORDER BY provider,created_at DESC`,
+    [tenantId],
+  ), pool.query(
+    `SELECT provider,
+            MAX(finished_at) FILTER (WHERE status IN ('succeeded','partial')) AS last_success_at,
+            MAX(finished_at) FILTER (WHERE status='failed') AS last_failure_at,
+            COALESCE(SUM(quota_consumed) FILTER (WHERE created_at>=CURRENT_DATE),0)::int AS daily_usage,
+            COALESCE(SUM(quota_consumed) FILTER (WHERE created_at>=date_trunc('month',CURRENT_DATE)),0)::int AS monthly_usage,
+            COALESCE(SUM(inserted_count),0)::int AS inserted_total,
+            COALESCE(SUM(duplicate_count),0)::int AS duplicate_total,
+            COALESCE(SUM(rejected_count),0)::int AS rejected_total
+     FROM wizmatch_source_runs WHERE tenant_id=$1 GROUP BY provider ORDER BY provider`,
+    [tenantId],
+  )]);
+  res.json({ config, latestRuns: latest.rows, providers: providers.rows });
+});
+
+router.get('/sourcing/runs', async (req: Request, res: Response) => {
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const result = await pool.query(
+    `SELECT * FROM wizmatch_source_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`,
+    [req.user!.tenantId, limit],
+  );
+  res.json({ items: result.rows, total: result.rows.length });
+});
+
+router.post('/sourcing/:provider/preview', async (req: Request, res: Response) => {
+  const provider = String(req.params.provider);
+  if (provider === 'theirstack') { res.json(previewTheirStackImport()); return; }
+  if (provider === 'ats') {
+    const count = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM wizmatch_companies WHERE tenant_id=$1 AND ats_type IN ('greenhouse','lever','ashby') AND ats_slug IS NOT NULL AND ats_board_url IS NOT NULL`,
+      [req.user!.tenantId],
+    );
+    res.json({ enabled: getWizmatchSourcingConfig().atsEnabled, approvedCompanies: count.rows[0]?.count || 0 });
+    return;
+  }
+  res.status(400).json({ error: 'provider must be theirstack or ats' });
+});
+
+router.post('/sourcing/:provider/run', async (req: Request, res: Response) => {
+  try {
+    const provider = String(req.params.provider);
+    if (provider === 'theirstack') {
+      if (!getWizmatchSourcingConfig().theirstackEnabled) { res.status(403).json({ error: 'TheirStack sourcing is disabled or not configured' }); return; }
+      const result = await withWizmatchSourceLock(req.user!.tenantId, provider, () => importTheirStackJobs({ trigger: 'manual', requestedBy: req.user!.id }));
+      if (!result) { res.status(409).json({ error: 'A TheirStack source run is already active' }); return; }
+      res.json(result); return;
+    }
+    if (provider === 'ats') {
+      if (!getWizmatchSourcingConfig().atsEnabled) { res.status(403).json({ error: 'ATS polling is disabled' }); return; }
+      const result = await withWizmatchSourceLock(req.user!.tenantId, provider, () => pollAtsBoards({ trigger: 'manual', requestedBy: req.user!.id }));
+      if (!result) { res.status(409).json({ error: 'An ATS source run is already active' }); return; }
+      res.json(result); return;
+    }
+    res.status(400).json({ error: 'provider must be theirstack or ats' });
+  } catch (error) {
+    logger.error({ err: error }, '[wizmatch/sourcing] manual run failed');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Sourcing run failed' });
+  }
+});
+
+router.post('/companies/:id/ats/detect', async (req: Request, res: Response) => {
+  const tenantId = req.user!.tenantId;
+  const company = await pool.query(
+    `SELECT id,domain FROM wizmatch_companies WHERE tenant_id=$1 AND id=$2 LIMIT 1`,
+    [tenantId, String(req.params.id)],
+  );
+  if (!company.rows[0]) { res.status(404).json({ error: 'Company not found' }); return; }
+  if (!company.rows[0].domain) { res.status(409).json({ error: 'Company domain is required before ATS detection' }); return; }
+  res.json({ detected: await detectAtsType(company.rows[0].domain), confirmed: false });
+});
+
+router.post('/companies/:id/ats', async (req: Request, res: Response) => {
+  const atsType = firstString(req.body?.atsType);
+  const atsSlug = firstString(req.body?.atsSlug);
+  const atsBoardUrl = firstString(req.body?.atsBoardUrl);
+  if (!['greenhouse', 'lever', 'ashby'].includes(atsType || '') || !atsSlug || !atsBoardUrl) {
+    res.status(400).json({ error: 'A supported ATS type, slug, and confirmed board URL are required' }); return;
+  }
+  const updated = await pool.query(
+    `UPDATE wizmatch_companies SET ats_type=$3,ats_slug=$4,ats_board_url=$5,updated_at=NOW()
+     WHERE tenant_id=$1 AND id=$2 RETURNING id,name,domain,ats_type,ats_slug,ats_board_url`,
+    [req.user!.tenantId, String(req.params.id), atsType, atsSlug, atsBoardUrl],
+  );
+  if (!updated.rows[0]) { res.status(404).json({ error: 'Company not found' }); return; }
+  res.json({ company: updated.rows[0], confirmed: true });
+});
+
+router.post('/signals/:id/qualify', async (req: Request, res: Response) => {
+  try { res.json(await qualifySignalAndCreatePocTask(req.user!.tenantId, String(req.params.id), req.user!.id)); }
+  catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : 'Signal qualification failed' }); }
+});
+
+router.post('/signals/:id/reject', async (req: Request, res: Response) => {
+  try { res.json(await rejectSignal(req.user!.tenantId, String(req.params.id), req.user!.id, firstString(req.body?.reason) || undefined)); }
+  catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : 'Signal rejection failed' }); }
+});
+
+router.post('/signals/:id/discover-poc', async (req: Request, res: Response) => {
+  try { res.json(await discoverFreePocsForSignal(req.user!.tenantId, String(req.params.id), req.user!.id)); }
+  catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'POC discovery failed' }); }
+});
+
+router.post('/signals/:id/promote-to-requirement', async (req: Request, res: Response) => {
+  try {
+    const result = await promoteSignalToRequirement(req.user!.tenantId, String(req.params.id), req.user!.id);
+    res.status(result.created ? 201 : 200).json(result);
+  } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Signal promotion failed' }); }
+});
+
+router.post('/requirements/:id/source-candidates-xray', async (req: Request, res: Response) => {
+  try {
+    const result = await withWizmatchSourceLock(req.user!.tenantId, `xray:${String(req.params.id)}`, () => runRequirementXray(req.user!.tenantId, String(req.params.id), req.user!.id));
+    if (!result) { res.status(409).json({ error: 'Candidate sourcing is already running for this requirement' }); return; }
+    res.json(result);
+  }
+  catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Requirement X-Ray failed' }); }
+});
+
 // GET /api/wizmatch/signals — list with filters
 router.get('/signals', async (req: Request, res: Response) => {
   const tenantId = req.user!.tenantId;
@@ -3785,8 +3930,8 @@ router.get('/signals', async (req: Request, res: Response) => {
     `SELECT s.*, c.name AS company_name, c.domain AS company_domain,
             cnt.first_name AS contact_first_name, cnt.last_name AS contact_last_name
      FROM wizmatch_job_signals s
-     LEFT JOIN wizmatch_companies c ON c.id = s.company_id
-     LEFT JOIN contacts cnt ON cnt.id = s.contact_id
+     LEFT JOIN wizmatch_companies c ON c.id = s.company_id AND c.tenant_id=s.tenant_id
+     LEFT JOIN contacts cnt ON cnt.id = s.contact_id AND cnt.tenant_id=s.tenant_id
      WHERE ${whereClause}
      ORDER BY s.score DESC NULLS LAST, s.created_at DESC
      LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
@@ -3804,8 +3949,8 @@ router.get('/signals/:id', async (req: Request, res: Response) => {
             cnt.first_name AS contact_first_name, cnt.last_name AS contact_last_name,
             cnt.id AS contact_id
      FROM wizmatch_job_signals s
-     LEFT JOIN wizmatch_companies c ON c.id = s.company_id
-     LEFT JOIN contacts cnt ON cnt.id = s.contact_id
+     LEFT JOIN wizmatch_companies c ON c.id = s.company_id AND c.tenant_id=s.tenant_id
+     LEFT JOIN contacts cnt ON cnt.id = s.contact_id AND cnt.tenant_id=s.tenant_id
      WHERE s.id = $1 AND s.tenant_id = $2`,
     [req.params.id, tenantId],
   );
@@ -3825,9 +3970,9 @@ router.get('/signals/:id', async (req: Request, res: Response) => {
               wc.rate_currency, wc.availability_date, wc.availability_status,
               c.first_name, c.last_name
        FROM wizmatch_candidates wc
-       JOIN contacts c ON c.id = wc.contact_id
-       WHERE wc.id = ANY($1::uuid[])`,
-      [signal.matched_candidate_ids],
+       JOIN contacts c ON c.id = wc.contact_id AND c.tenant_id=wc.tenant_id
+       WHERE wc.id = ANY($1::uuid[]) AND wc.tenant_id=$2`,
+      [signal.matched_candidate_ids, tenantId],
     );
     matchedCandidates = candResult.rows;
   }
@@ -3836,9 +3981,9 @@ router.get('/signals/:id', async (req: Request, res: Response) => {
   const draftsResult = await pool.query(
     `SELECT id, content, metadata, status, created_at
      FROM messages
-     WHERE contact_id = $1 AND metadata->>'signal_id' = $2
+     WHERE tenant_id=$3 AND contact_id = $1 AND metadata->>'signal_id' = $2
      ORDER BY created_at DESC`,
-    [signal.contact_id, req.params.id],
+    [signal.contact_id, req.params.id, tenantId],
   );
 
   res.json({ ...signal, matched_candidates: matchedCandidates, drafts: draftsResult.rows });
@@ -3871,78 +4016,9 @@ router.post('/signals/ingest', requireInternalToken, async (req: Request, res: R
     return;
   }
 
-  let inserted = 0;
-  let updated = 0;
-  let errors = 0;
-
-  for (const sig of incomingSignals) {
-    try {
-      // Resolve or create company
-      let companyId: string | null = null;
-      if (sig.company_name || sig.company_domain) {
-        const companyResult = await pool.query(
-          `INSERT INTO wizmatch_companies (tenant_id, name, domain, created_at, updated_at)
-           VALUES ($1, $2, $3, NOW(), NOW())
-           ON CONFLICT (tenant_id, name) DO UPDATE SET updated_at = NOW()
-           RETURNING id`,
-          [
-            tenantId,
-            sig.company_name || sig.company_domain || 'Unknown',
-            sig.company_domain || null,
-          ],
-        );
-        companyId = companyResult.rows[0].id;
-      }
-
-      const { normalizeProviderId, signalIdentityFingerprint } = await import('../services/wizmatchSignalIdentity');
-      const providerId = normalizeProviderId(sig.provider_id);
-      const identityFingerprint = signalIdentityFingerprint({ companyName: sig.company_name || sig.company_domain, jobTitle: sig.job_title, location: sig.location });
-
-      // Prefer provider identity, then URL, then normalized company/title/location.
-      if (providerId || sig.job_url || identityFingerprint) {
-        const existing = await pool.query(
-          `UPDATE wizmatch_job_signals
-           SET last_seen_at = NOW(),
-               days_open = GREATEST(days_open, EXTRACT(EPOCH FROM (NOW() - first_seen_at))/86400)::int
-           WHERE tenant_id = $1 AND ((source=$2 AND provider_id=$3 AND $3 IS NOT NULL) OR (job_url=$4 AND $4 IS NOT NULL) OR (identity_fingerprint=$5 AND $5 IS NOT NULL))
-           RETURNING id`,
-          [tenantId, sig.source, providerId, sig.job_url || null, identityFingerprint],
-        );
-        if (existing.rows.length > 0) {
-          updated++;
-          continue;
-        }
-      }
-
-      await pool.query(
-        `INSERT INTO wizmatch_job_signals
-         (tenant_id, company_id, job_title, job_url, source, provider_id, identity_fingerprint, posted_at,
-          employment_type, keywords, location, raw_text, status, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'new', NOW())`,
-        [
-          tenantId,
-          companyId,
-          sig.job_title,
-          sig.job_url || null,
-          sig.source,
-          providerId,
-          identityFingerprint,
-          sig.posted_at || null,
-          sig.employment_type || null,
-          sig.keywords || [],
-          sig.location || null,
-          sig.raw_text || null,
-        ],
-      );
-      inserted++;
-    } catch (e) {
-      logger.error({ err: e }, '[wizmatch] ingest error for signal');
-      errors++;
-    }
-  }
-
-  logger.info(`[wizmatch] ingest: ${inserted} new, ${updated} updated, ${errors} errors`);
-  res.json({ inserted, updated, errors });
+  const result = await ingestWizmatchSignals(tenantId, incomingSignals);
+  logger.info(`[wizmatch] ingest: ${result.inserted} new, ${result.updated} updated, ${result.errors} errors`);
+  res.json(result);
 });
 
 // POST /api/wizmatch/signals/:id/score — deterministic TS scorer (internal)

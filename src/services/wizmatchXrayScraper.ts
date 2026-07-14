@@ -14,6 +14,7 @@ import { db } from '../db/index';
 import { wizmatchCandidates } from '../db/schema';
 import { findOrCreateContact } from './contactService';
 import logger from '../utils/logger';
+import { createSourceRun, finishSourceRun, getWizmatchSourcingConfig } from './wizmatchSourcing';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -130,11 +131,22 @@ function parseNameFromTitle(title: string): { firstName: string; lastName: strin
   return { firstName, lastName };
 }
 
+export function buildRequirementXraySearch(skill: string, location: string): XrayQuery {
+  const normalizedSkill = skill.trim();
+  const normalizedLocation = location.trim() || 'India';
+  return {
+    q: `site:linkedin.com/in "${normalizedSkill} developer" "${normalizedLocation}" "open to work"`,
+    label: `Requirement: ${normalizedSkill} in ${normalizedLocation}`,
+    skills: [normalizedSkill.toLowerCase()],
+  };
+}
+
 // ── Main scraper ─────────────────────────────────────────────────────────────
 
 export async function runXrayScrape(
   maxQueries = 3,
   adhocQuery?: { skill: string; location: string },
+  context: { requirementId?: string | null; requestedBy?: string | null } = {},
 ): Promise<XrayResult> {
   const tenantId = process.env.WIZMATCH_TENANT_ID;
   const serpApiKey = process.env.SERPAPI_API_KEY;
@@ -149,16 +161,16 @@ export async function runXrayScrape(
     return { queries_run: 0, candidates_found: 0, candidates_created: 0, skipped_exists: 0, errors: 0 };
   }
 
+  const sourceRun = context.requirementId
+    ? await createSourceRun({ tenantId, provider: 'xray', requirementId: context.requirementId, requestedBy: context.requestedBy, query: adhocQuery || {} })
+    : null;
+
   let todayQueries: XrayQuery[];
   if (adhocQuery) {
     // On-demand path (recruiter-triggered "Source now"): run exactly ONE query for
     // the requested skill+location. Does not touch the daily rotating cron set below.
     // SerpAPI free tier is ~100 searches/month — callers must not loop this.
-    todayQueries = [{
-      q: `site:linkedin.com/in "${adhocQuery.skill} developer" "${adhocQuery.location}" "open to work"`,
-      label: `Adhoc: ${adhocQuery.skill} in ${adhocQuery.location}`,
-      skills: [adhocQuery.skill.toLowerCase()],
-    }];
+    todayQueries = [buildRequirementXraySearch(adhocQuery.skill, adhocQuery.location)];
   } else {
     // Rotate queries day-by-day
     const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
@@ -231,6 +243,17 @@ export async function runXrayScrape(
             visaStatus: 'unknown',
             source: 'xray',
             linkedinUrl: result.link,
+            indiaSpecific: {
+              sourcingEvidence: {
+                state: 'candidate_lead',
+                requirementId: context.requirementId || null,
+                query: search.q,
+                headline: result.title,
+                snippet: result.snippet,
+                discoveredAt: new Date().toISOString(),
+                reviewed: false,
+              },
+            },
           }).onConflictDoNothing();
 
           totalCreated++;
@@ -248,6 +271,13 @@ export async function runXrayScrape(
     await new Promise((r) => setTimeout(r, 3000));
   }
 
+  if (sourceRun) {
+    await finishSourceRun(sourceRun.id, tenantId, {
+      status: totalErrors ? 'partial' : 'succeeded', fetched: totalFound, inserted: totalCreated,
+      updated: 0, duplicates: skippedExists, rejected: 0, errors: totalErrors, quotaConsumed: todayQueries.length,
+    });
+  }
+
   logger.info(
     `[wizmatch-xray] Scraped ${todayQueries.length} queries: ${totalFound} results found, ${totalCreated} candidates created, ${skippedExists} already existed, ${totalErrors} errors`,
   );
@@ -259,4 +289,40 @@ export async function runXrayScrape(
     skipped_exists: skippedExists,
     errors: totalErrors,
   };
+}
+
+export async function runRequirementXray(tenantId: string, requirementId: string, requestedBy: string) {
+  if (tenantId !== process.env.WIZMATCH_TENANT_ID) throw new Error('X-Ray tenant is not configured');
+  const config = getWizmatchSourcingConfig();
+  if (!config.xrayEnabled) throw new Error('Requirement-first X-Ray is disabled or not configured');
+  const requirement = await pool.query(
+    `SELECT r.id,r.location,r.work_mode,r.min_experience,r.stage,
+            ARRAY_REMOVE(ARRAY_AGG(CASE WHEN rs.importance='mandatory' THEN s.canonical_label END),NULL) AS mandatory_skills
+     FROM wizmatch_requirements r
+     LEFT JOIN wizmatch_requirement_skills rs ON rs.requirement_id=r.id AND rs.tenant_id=r.tenant_id
+     LEFT JOIN wizmatch_skills s ON s.id=rs.skill_id AND s.tenant_id=rs.tenant_id
+     WHERE r.id=$1 AND r.tenant_id=$2 GROUP BY r.id`,
+    [requirementId, tenantId],
+  );
+  if (!requirement.rows[0]) throw new Error('Requirement not found');
+  if (!['accepted', 'sourcing', 'covered'].includes(requirement.rows[0].stage)) {
+    throw new Error('Requirement must be accepted before candidate sourcing');
+  }
+  const skill = requirement.rows[0].mandatory_skills?.[0];
+  if (!skill) throw new Error('Requirement needs at least one canonical mandatory skill');
+  const cooldown = await pool.query(
+    `SELECT 1 FROM wizmatch_source_runs WHERE tenant_id=$1 AND provider='xray' AND requirement_id=$2
+     AND status IN ('succeeded','partial') AND created_at > NOW()-INTERVAL '7 days' LIMIT 1`,
+    [tenantId, requirementId],
+  );
+  if (cooldown.rows.length) throw new Error('This requirement already used X-Ray in the last seven days');
+  const usage = await pool.query(
+    `SELECT COUNT(*) FILTER (WHERE created_at::date=CURRENT_DATE)::int AS daily,
+            COUNT(*) FILTER (WHERE date_trunc('month',created_at)=date_trunc('month',NOW()))::int AS monthly
+     FROM wizmatch_source_runs WHERE tenant_id=$1 AND provider='xray' AND status IN ('succeeded','partial','running')`,
+    [tenantId],
+  );
+  if ((usage.rows[0]?.daily || 0) >= config.xrayDailyCap) throw new Error('Daily X-Ray cap reached');
+  if ((usage.rows[0]?.monthly || 0) >= config.xrayMonthlyCap) throw new Error('Monthly X-Ray cap reached');
+  return runXrayScrape(1, { skill, location: requirement.rows[0].location || 'India' }, { requirementId, requestedBy });
 }

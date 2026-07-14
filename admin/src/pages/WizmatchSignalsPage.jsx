@@ -23,6 +23,9 @@ export default function WizmatchSignalsPage() {
   const [page, setPage] = useState(0);
   const [selectedSignal, setSelectedSignal] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [sourcing, setSourcing] = useState(null);
+  const [feedback, setFeedback] = useState('');
+  const [actionBusy, setActionBusy] = useState('');
 
   const loadSignals = useCallback(async () => {
     setLoading(true);
@@ -42,6 +45,22 @@ export default function WizmatchSignalsPage() {
   }, [filters, page]);
 
   useEffect(() => { loadSignals(); }, [loadSignals]);
+  const loadSourcing = useCallback(async () => {
+    try { setSourcing(await apiFetch('/api/wizmatch/sourcing/status')); }
+    catch (e) { setFeedback(e.message || 'Sourcing status could not be loaded.'); }
+  }, []);
+  useEffect(() => { loadSourcing(); }, [loadSourcing]);
+
+  async function runAction(label, path, body) {
+    setActionBusy(label); setFeedback('');
+    try {
+      const result = await apiFetch(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
+      setFeedback(`${label} completed.`); await loadSignals(); await loadSourcing();
+      if (selectedSignal) await openDetail(selectedSignal);
+      return result;
+    } catch (e) { setFeedback(e.message || `${label} failed.`); }
+    finally { setActionBusy(''); }
+  }
 
   // Poll for new signals every 30s
   useEffect(() => {
@@ -74,6 +93,15 @@ export default function WizmatchSignalsPage() {
       <div className="mb-6">
         <h1 className="text-[20px] font-bold text-neutral-900">Job Signals</h1>
         <p className="text-[12.5px] text-neutral-500 mt-1">{total} total signals · auto-refreshes every 30s</p>
+      </div>
+
+      {feedback && <div role="status" className="mb-4 rounded-md border border-info-200 bg-info-50 p-3 text-sm text-info-800">{feedback}</div>}
+      <div className="mb-4 grid gap-3 md:grid-cols-3">
+        {['theirstack','ats','xray'].map(provider => {
+          const cfg = sourcing?.config || {}; const latest = (sourcing?.latestRuns || []).find(run => run.provider===provider);
+          const enabled = provider==='theirstack' ? cfg.theirstackEnabled : provider==='ats' ? cfg.atsEnabled : cfg.xrayEnabled;
+          return <div className="card p-3" key={provider}><div className="flex justify-between"><span className="font-semibold capitalize">{provider}</span><span className={enabled?'badge-success':'badge-muted'}>{enabled?'active':'off'}</span></div><div className="mt-1 text-xs text-neutral-500">{latest ? `${latest.status} · ${latest.inserted_count || 0} new · ${latest.duplicate_count || 0} duplicate` : 'No run recorded'}</div>{provider!=='xray' && <button disabled={!enabled||actionBusy} className="btn-standard btn-compact mt-2" onClick={()=>runAction(`Run ${provider}`,`/api/wizmatch/sourcing/${provider}/run`)}>Run now</button>}</div>;
+        })}
       </div>
 
       {/* Filters */}
@@ -275,7 +303,11 @@ export default function WizmatchSignalsPage() {
                   )}
 
                   {/* Actions */}
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button disabled={actionBusy} onClick={()=>runAction('Qualify signal',`/api/wizmatch/signals/${selectedSignal.id}/qualify`)} className="btn-primary">Qualify + POC task</button>
+                    <button disabled={actionBusy||!sourcing?.config?.pocDiscoveryEnabled} onClick={()=>runAction('Find POC',`/api/wizmatch/signals/${selectedSignal.id}/discover-poc`)} className="btn-standard">Find POC</button>
+                    <button disabled={actionBusy} onClick={()=>runAction('Create requirement draft',`/api/wizmatch/signals/${selectedSignal.id}/promote-to-requirement`)} className="btn-standard">Create requirement draft</button>
+                    <button disabled={actionBusy} onClick={()=>runAction('Reject signal',`/api/wizmatch/signals/${selectedSignal.id}/reject`,{reason:'Not a workable staffing requirement'})} className="btn-standard text-danger-700">Reject</button>
                     <button
                       onClick={async () => {
                         try {

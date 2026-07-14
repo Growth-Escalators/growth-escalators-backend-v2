@@ -1418,6 +1418,7 @@ export const wizmatchRequirements = pgTable(
     nextActionDueAt: timestamp('next_action_due_at'),
     slaDueAt: timestamp('sla_due_at'),
     closureReason: text('closure_reason'),
+    sourceJobSignalId: uuid('source_job_signal_id').references(() => wizmatchJobSignals.id),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
@@ -1598,6 +1599,7 @@ export const wizmatchTaskLinks = pgTable(
     requirementId: uuid('requirement_id').references(() => wizmatchRequirements.id),
     candidateId: uuid('candidate_id').references(() => wizmatchCandidates.id),
     submissionId: uuid('submission_id').references(() => wizmatchSubmissions.id),
+    jobSignalId: uuid('job_signal_id').references(() => wizmatchJobSignals.id),
     createdAt: timestamp('created_at').defaultNow(),
   },
   (t) => ({
@@ -1606,6 +1608,42 @@ export const wizmatchTaskLinks = pgTable(
     companyIdx: index('wizmatch_task_links_company_idx').on(t.tenantId, t.companyId),
     candidateIdx: index('wizmatch_task_links_candidate_idx').on(t.tenantId, t.candidateId),
     submissionIdx: index('wizmatch_task_links_submission_idx').on(t.tenantId, t.submissionId),
+    jobSignalIdx: index('wizmatch_task_links_job_signal_idx').on(t.tenantId, t.jobSignalId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// RESULTS-FIRST SOURCING — provider run audit, quota, and requirement trace.
+// ---------------------------------------------------------------------------
+export const wizmatchSourceRuns = pgTable(
+  'wizmatch_source_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    provider: text('provider').notNull(), // theirstack | ats | xray | poc_discovery
+    trigger: text('trigger').notNull().default('manual'), // manual | scheduled
+    status: text('status').notNull().default('running'), // running | succeeded | partial | failed | skipped | blocked
+    requirementId: uuid('requirement_id').references(() => wizmatchRequirements.id),
+    companyId: uuid('company_id').references(() => wizmatchCompanies.id),
+    query: jsonb('query').notNull().default({}),
+    cursorBefore: text('cursor_before'),
+    cursorAfter: text('cursor_after'),
+    fetchedCount: integer('fetched_count').notNull().default(0),
+    insertedCount: integer('inserted_count').notNull().default(0),
+    updatedCount: integer('updated_count').notNull().default(0),
+    rejectedCount: integer('rejected_count').notNull().default(0),
+    duplicateCount: integer('duplicate_count').notNull().default(0),
+    quotaConsumed: integer('quota_consumed').notNull().default(0),
+    errorMessage: text('error_message'),
+    requestedBy: uuid('requested_by').references(() => users.id),
+    startedAt: timestamp('started_at').notNull().defaultNow(),
+    finishedAt: timestamp('finished_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantCreatedIdx: index('wizmatch_source_runs_tenant_created_idx').on(t.tenantId, t.createdAt),
+    tenantProviderIdx: index('wizmatch_source_runs_tenant_provider_idx').on(t.tenantId, t.provider, t.createdAt),
+    requirementIdx: index('wizmatch_source_runs_requirement_idx').on(t.tenantId, t.requirementId),
   }),
 );
 

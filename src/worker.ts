@@ -1600,6 +1600,34 @@ if (wizmatchAutomation.masterEnabled) {
     console.log('[cron] Wizmatch legacy automation skipped (WIZMATCH_LEGACY_AUTOMATION_ENABLED is off)');
   }
 
+  // Results-first sourcing is isolated from the broad legacy block. These jobs
+  // only ingest reviewable demand signals; they never send or submit anything.
+  if (wizmatchAutomation.sourcing.theirstackEnabled) {
+    cron.schedule('35 1 * * 1,4', () => safeCron('Wizmatch TheirStack Results-First Importer', async () => {
+      const { importTheirStackJobs } = await import('./services/wizmatchTheirStackImporter');
+      const { withWizmatchSourceLock } = await import('./services/wizmatchSourcing');
+      const result = await withWizmatchSourceLock(process.env.WIZMATCH_TENANT_ID!, 'theirstack', () => importTheirStackJobs({ trigger: 'scheduled' }));
+      if (!result) { console.log('[CRON] Wizmatch TheirStack sourcing skipped — another run holds the lock'); return; }
+      console.log(`[CRON] Wizmatch TheirStack sourcing: ${result.inserted} new, ${result.updated} updated, ${result.errors} errors`);
+    }), { timezone: 'UTC' });
+    console.log('[cron] Wizmatch TheirStack results-first importer scheduled — 7:05 AM IST Mon/Thu');
+  } else {
+    console.log('[cron] Wizmatch TheirStack results-first importer skipped');
+  }
+
+  if (wizmatchAutomation.sourcing.atsEnabled) {
+    cron.schedule('40 0 * * *', () => safeCron('Wizmatch ATS Results-First Poller', async () => {
+      const { pollAtsBoards } = await import('./services/wizmatchAtsPoller');
+      const { withWizmatchSourceLock } = await import('./services/wizmatchSourcing');
+      const result = await withWizmatchSourceLock(process.env.WIZMATCH_TENANT_ID!, 'ats', () => pollAtsBoards({ trigger: 'scheduled' }));
+      if (!result) { console.log('[CRON] Wizmatch ATS sourcing skipped — another run holds the lock'); return; }
+      console.log(`[CRON] Wizmatch ATS sourcing: ${result.jobs_inserted} new, ${result.jobs_updated} updated, ${result.errors} errors`);
+    }), { timezone: 'UTC' });
+    console.log('[cron] Wizmatch ATS results-first poller scheduled — 6:10 AM IST daily');
+  } else {
+    console.log('[cron] Wizmatch ATS results-first poller skipped');
+  }
+
   // Staffing OS reminders — 9:17 AM IST Mon-Sat. Deterministic and $0:
   // creates deduplicated shared tasks only; it never contacts candidates or clients.
   if (wizmatchAutomation.staffingRemindersEnabled) {
