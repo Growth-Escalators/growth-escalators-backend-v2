@@ -3,6 +3,7 @@ import { getTenantSlug } from '../../admin/src/lib/auth.js';
 import { apiFetch } from '../../admin/src/lib/api.js';
 import { isTerminalOutcome } from '../../admin/src/lib/pipelineStageOutcomes.js';
 import { computeFlags } from '../../admin/src/components/navEntries.js';
+import { getWizmatchPreviewLinks } from '../../admin/src/lib/wizmatchPreviewLinks.js';
 
 function installBrowserPath(pathname, storedTenant = 'growth-escalators') {
   const store = new Map([['crm_active_tenant_slug', storedTenant]]);
@@ -27,6 +28,13 @@ afterEach(() => {
 });
 
 describe('admin tenant and pipeline outcome helpers', () => {
+  it('does not advertise development-only Wizmatch previews in production', () => {
+    expect(getWizmatchPreviewLinks(false)).toEqual([]);
+    expect(getWizmatchPreviewLinks(true)).toEqual(expect.arrayContaining([
+      ['/wizmatch/review-workbench-demo', 'Workbench'],
+    ]));
+  });
+
   it('hides staffing navigation until server-confirmed pilot access is stored', () => {
     expect(computeFlags('staff', {}, 'wizmatch').canStaffing).toBe(false);
     expect(computeFlags('staff', { staffingPilotAccess: true }, 'wizmatch').canStaffing).toBe(true);

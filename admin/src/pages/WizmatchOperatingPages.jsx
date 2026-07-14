@@ -23,6 +23,7 @@ import {
   UserCheck,
   Zap,
 } from 'lucide-react';
+import { getWizmatchPreviewLinks } from '../lib/wizmatchPreviewLinks.js';
 import { apiFetch } from '../lib/api.js';
 
 const BADGE = {
@@ -499,20 +500,24 @@ function MetricRail({ actions }) {
 }
 
 function OperatingLinks() {
-  const links = [
-    ['/wizmatch/review-workbench-demo', 'Workbench', ClipboardList],
-    ['/wizmatch/requirement-priority-new-demo', 'Requirements', FileText],
-    ['/wizmatch/client-discovery-new-demo', 'Clients', Target],
-    ['/wizmatch/contact-intelligence-new-demo', 'Contacts', Contact],
-    ['/wizmatch/candidate-intelligence-new-demo', 'Candidates', UserCheck],
-    ['/wizmatch/readiness-demo', 'Readiness', DatabaseZap],
-    ['/wizmatch/analytics-new-demo', 'Analytics', Activity],
-  ];
+  const iconByLabel = {
+    Workbench: ClipboardList,
+    Requirements: FileText,
+    Clients: Target,
+    Contacts: Contact,
+    Candidates: UserCheck,
+    Readiness: DatabaseZap,
+    Analytics: Activity,
+  };
+  const links = getWizmatchPreviewLinks();
+  if (!links.length) return null;
   return (
     <div className="card p-5">
       <SectionHeader icon={PlayCircle} title="Preview surfaces" description="No-login localhost links for fast review." />
       <div className="grid gap-2 sm:grid-cols-2">
-        {links.map(([href, label, Icon]) => (
+        {links.map(([href, label]) => {
+          const Icon = iconByLabel[label];
+          return (
           <a key={href} href={href} className="flex items-center justify-between rounded-md border border-neutral-100 bg-white px-3 py-2 text-sm font-semibold text-neutral-800 transition hover:border-primary-300 hover:text-primary-700">
             <span className="flex items-center gap-2">
               <Icon className="h-4 w-4 text-neutral-400" />
@@ -520,7 +525,8 @@ function OperatingLinks() {
             </span>
             <ArrowRight className="h-3.5 w-3.5" />
           </a>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
