@@ -118,7 +118,8 @@ import logger from '../utils/logger';
 import { isSafeFetchHost } from '../utils/ssrfGuard';
 import { mineGithubCandidates } from '../services/wizmatchGithubMiner';
 import { runRequirementXray, runXrayScrape } from '../services/wizmatchXrayScraper';
-import { importTheirStackJobs, previewTheirStackImport } from '../services/wizmatchTheirStackImporter';
+import { fetchTheirStackPreview, importTheirStackJobs, previewTheirStackImport, validateTheirStackAccount } from '../services/wizmatchTheirStackImporter';
+import { getSearchApiRunUsage, validateSearchApiAccount } from '../services/wizmatchSearchApi';
 import { detectAtsType, pollAtsBoards } from '../services/wizmatchAtsPoller';
 import {
   discoverFreePocsForSignal,
@@ -3765,7 +3766,7 @@ router.get('/command-center', async (req: Request, res: Response) => {
 router.get('/sourcing/status', async (req: Request, res: Response) => {
   const tenantId = req.user!.tenantId;
   const config = getWizmatchSourcingConfig();
-  const [latest, providers] = await Promise.all([pool.query(
+  const [latest, providers, searchApiAccount, theirStackAccount, searchApiUsage] = await Promise.all([pool.query(
     `SELECT DISTINCT ON (provider) provider,status,started_at,finished_at,fetched_count,inserted_count,updated_count,
             duplicate_count,rejected_count,quota_consumed,error_message
      FROM wizmatch_source_runs WHERE tenant_id=$1 ORDER BY provider,created_at DESC`,
@@ -3781,8 +3782,20 @@ router.get('/sourcing/status', async (req: Request, res: Response) => {
             COALESCE(SUM(rejected_count),0)::int AS rejected_total
      FROM wizmatch_source_runs WHERE tenant_id=$1 GROUP BY provider ORDER BY provider`,
     [tenantId],
-  )]);
-  res.json({ config, latestRuns: latest.rows, providers: providers.rows });
+  ), validateSearchApiAccount(), validateTheirStackAccount(), getSearchApiRunUsage(tenantId)]);
+  res.json({
+    config,
+    latestRuns: latest.rows,
+    providers: providers.rows,
+    providerAccounts: { searchapi: searchApiAccount, theirstack: theirStackAccount },
+    searchApiUsage: {
+      ...searchApiUsage,
+      dailyLimit: config.searchApiDailyCap,
+      monthlyLimit: config.searchApiMonthlyCap,
+      dailyRemaining: Math.max(0, config.searchApiDailyCap - searchApiUsage.daily),
+      monthlyRemaining: Math.max(0, config.searchApiMonthlyCap - searchApiUsage.monthly),
+    },
+  });
 });
 
 router.get('/sourcing/runs', async (req: Request, res: Response) => {
@@ -3796,7 +3809,11 @@ router.get('/sourcing/runs', async (req: Request, res: Response) => {
 
 router.post('/sourcing/:provider/preview', async (req: Request, res: Response) => {
   const provider = String(req.params.provider);
-  if (provider === 'theirstack') { res.json(previewTheirStackImport()); return; }
+  if (provider === 'theirstack') {
+    try { res.json(await fetchTheirStackPreview()); }
+    catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'TheirStack preview failed' }); }
+    return;
+  }
   if (provider === 'ats') {
     const count = await pool.query(
       `SELECT COUNT(*)::int AS count FROM wizmatch_companies WHERE tenant_id=$1 AND ats_type IN ('greenhouse','lever','ashby') AND ats_slug IS NOT NULL AND ats_board_url IS NOT NULL`,

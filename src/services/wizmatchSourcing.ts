@@ -2,6 +2,13 @@ import { pool } from '../db/index';
 import logger from '../utils/logger';
 import { normalizeProviderId, signalIdentityFingerprint } from './wizmatchSignalIdentity';
 import { createDefaultWizmatchContactDiscoveryProviders } from './wizmatchContactDiscoveryProviders';
+import {
+  assertSearchApiAllowance,
+  buildPocSearchQuery,
+  classifyPocResult,
+  getSearchApiRunUsage,
+  searchPublicWeb,
+} from './wizmatchSearchApi';
 
 export type WizmatchSourceProvider = 'theirstack' | 'ats' | 'xray' | 'poc_discovery';
 
@@ -44,13 +51,16 @@ export function getWizmatchSourcingConfig(env: NodeJS.ProcessEnv = process.env) 
     masterEnabled,
     theirstackEnabled: masterEnabled && enabled(env.WIZMATCH_THEIRSTACK_IMPORT_ENABLED) && Boolean(env.THEIRSTACK_API_KEY),
     atsEnabled: masterEnabled && enabled(env.WIZMATCH_ATS_POLLING_ENABLED),
-    xrayEnabled: enabled(env.WIZMATCH_XRAY_CANDIDATE_ENABLED) && Boolean(env.SERPAPI_API_KEY),
+    xrayEnabled: enabled(env.WIZMATCH_XRAY_CANDIDATE_ENABLED) && Boolean(env.SEARCHAPI_API_KEY),
     pocDiscoveryEnabled: enabled(env.WIZMATCH_POC_DISCOVERY_ENABLED),
     theirstackConfigured: Boolean(env.THEIRSTACK_API_KEY),
-    xrayConfigured: Boolean(env.SERPAPI_API_KEY),
+    xrayConfigured: Boolean(env.SEARCHAPI_API_KEY),
+    searchApiConfigured: Boolean(env.SEARCHAPI_API_KEY),
     theirstackLimit: Math.min(Math.max(Number(env.WIZMATCH_THEIRSTACK_LIMIT) || 15, 1), 25),
-    xrayDailyCap: Math.min(Math.max(Number(env.WIZMATCH_XRAY_DAILY_CAP) || 2, 1), 10),
-    xrayMonthlyCap: Math.min(Math.max(Number(env.WIZMATCH_XRAY_MONTHLY_CAP) || 40, 1), 100),
+    searchApiDailyCap: Math.min(Math.max(Number(env.WIZMATCH_SEARCHAPI_DAILY_CAP) || 5, 1), 5),
+    searchApiMonthlyCap: Math.min(Math.max(Number(env.WIZMATCH_SEARCHAPI_MONTHLY_CAP) || 80, 1), 80),
+    xrayDailyCap: Math.min(Math.max(Number(env.WIZMATCH_SEARCHAPI_DAILY_CAP) || 5, 1), 5),
+    xrayMonthlyCap: Math.min(Math.max(Number(env.WIZMATCH_SEARCHAPI_MONTHLY_CAP) || 80, 1), 80),
     execution: masterEnabled ? 'web-in-process' as const : 'disabled' as const,
     schedules: {
       theirstack: '07:05 IST Monday and Thursday',
@@ -271,7 +281,7 @@ export async function discoverFreePocsForSignal(tenantId: string, signalId: stri
      WHERE s.id=$1 AND s.tenant_id=$2`,
     [signalId, tenantId],
   );
-  if (!signal.rows[0]?.domain) throw new Error('Signal company needs a public domain for website discovery');
+  if (!signal.rows[0]) throw new Error('Signal company was not found');
   const run = await createSourceRun({ tenantId, provider: 'poc_discovery', companyId: signal.rows[0].company_id, requestedBy: userId, query: { signalId } });
   try {
     const intelligence = await pool.query(
@@ -280,12 +290,59 @@ export async function discoverFreePocsForSignal(tenantId: string, signalId: stri
        ON CONFLICT (tenant_id,company_id) DO UPDATE SET updated_at=NOW() RETURNING id`,
       [tenantId, signal.rows[0].company_id],
     );
+    const internal = await pool.query(
+      `SELECT COUNT(DISTINCT wc.id)::int AS count,
+              COUNT(DISTINCT wc.id) FILTER (WHERE ch.id IS NOT NULL)::int AS with_channel
+       FROM wizmatch_company_contacts wc
+       LEFT JOIN contact_channels ch ON ch.tenant_id=wc.tenant_id AND ch.contact_id=wc.contact_id
+         AND ch.channel_type IN ('email','phone','whatsapp','linkedin')
+       WHERE wc.tenant_id=$1 AND wc.company_id=$2 AND wc.relationship_stage='active'`,
+      [tenantId, signal.rows[0].company_id],
+    );
+    if ((internal.rows[0]?.count || 0) > 0) {
+      await finishSourceRun(run.id, tenantId, { status: 'succeeded', fetched: internal.rows[0].count, quotaConsumed: 0 });
+      return { state: internal.rows[0].with_channel > 0 ? 'verified' : 'identified_channel_pending', candidatesFound: 0, existingRelationships: internal.rows[0].count, inserted: 0, duplicates: 0, searchApiUsed: false };
+    }
+
     const providers = createDefaultWizmatchContactDiscoveryProviders();
-    const candidates = await providers.websitePatternSearch({
+    const websiteCandidates = signal.rows[0].domain ? await providers.websitePatternSearch({
       companyName: signal.rows[0].company_name,
       domain: signal.rows[0].domain,
       targetRegion: 'india',
-    });
+    }) : [];
+    const candidates = [...websiteCandidates];
+    const hasNamedWebsitePoc = websiteCandidates.some((candidate) => candidate.raw?.roleCategory !== 'generic' && candidate.name);
+    let searchApiUsed = false;
+    if (!hasNamedWebsitePoc && config.searchApiConfigured) {
+      const recent = await pool.query(
+        `SELECT 1 FROM wizmatch_source_runs WHERE tenant_id=$1 AND provider='poc_discovery' AND company_id=$2
+         AND quota_consumed>0 AND status IN ('succeeded','partial') AND created_at>NOW()-INTERVAL '30 days' LIMIT 1`,
+        [tenantId, signal.rows[0].company_id],
+      );
+      if (!recent.rows.length) {
+        const usage = await getSearchApiRunUsage(tenantId);
+        assertSearchApiAllowance(usage, { daily: config.searchApiDailyCap, monthly: config.searchApiMonthlyCap });
+        const publicResults = await searchPublicWeb(buildPocSearchQuery(signal.rows[0].company_name, signal.rows[0].domain));
+        searchApiUsed = true;
+        for (const result of publicResults) {
+          const classified = classifyPocResult(result);
+          if (!classified.category || !classified.name) continue;
+          candidates.push({
+            name: classified.name,
+            title: result.title.slice(0, 240),
+            email: null,
+            linkedinUrl: result.link.includes('linkedin.com/in/') ? result.link : null,
+            source: 'searchapi_public_web',
+            sourceUrl: result.link,
+            deliverabilityStatus: 'unknown',
+            rankingScore: Math.max(0, 90 - result.position),
+            confidenceScore: 60,
+            reasons: ['Public search evidence; contact channel requires human verification'],
+            raw: { roleCategory: classified.category, snippet: result.snippet },
+          } as any);
+        }
+      }
+    }
     let inserted = 0;
     let duplicates = 0;
     for (const candidate of candidates) {
@@ -308,18 +365,14 @@ export async function discoverFreePocsForSignal(tenantId: string, signalId: stri
       );
       if (result.rows.length) inserted++; else duplicates++;
     }
-    const internal = await pool.query(
-      `SELECT COUNT(*)::int AS count FROM wizmatch_company_contacts WHERE tenant_id=$1 AND company_id=$2 AND relationship_stage='active'`,
-      [tenantId, signal.rows[0].company_id],
-    );
-    const state = internal.rows[0]?.count > 0 || candidates.some((c) => c.raw?.roleCategory !== 'generic')
+    const state = candidates.some((c) => c.raw?.roleCategory !== 'generic')
       ? 'identified_channel_pending'
       : candidates.length ? 'generic_contact_only' : 'human_research_required';
     await finishSourceRun(run.id, tenantId, {
       status: candidates.length || internal.rows[0]?.count ? 'succeeded' : 'partial', fetched: candidates.length + (internal.rows[0]?.count || 0),
-      inserted, duplicates, updated: 0, rejected: 0, errors: 0, quotaConsumed: 0,
+      inserted, duplicates, updated: 0, rejected: 0, errors: 0, quotaConsumed: searchApiUsed ? 1 : 0,
     });
-    return { state, candidatesFound: candidates.length, existingRelationships: internal.rows[0]?.count || 0, inserted, duplicates };
+    return { state, candidatesFound: candidates.length, existingRelationships: 0, inserted, duplicates, searchApiUsed };
   } catch (error) {
     await finishSourceRun(run.id, tenantId, { status: 'failed', errorMessage: error instanceof Error ? error.message : 'POC discovery failed' });
     throw error;

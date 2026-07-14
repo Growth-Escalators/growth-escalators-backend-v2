@@ -111,7 +111,7 @@ The command prints only presence/absence and source key names. It never prints s
 |---|---|
 | `WIZMATCH_ANTHROPIC_API_KEY` | Wizmatch-specific Claude key. `ANTHROPIC_API_KEY` / `CLAUDE_API_KEY` are accepted fallbacks. |
 | `GITHUB_TOKEN` | GitHub candidate mining rate limit. |
-| `SERPAPI_API_KEY` | X-Ray/Google candidate sourcing. |
+| `SEARCHAPI_API_KEY` | SearchAPI.io requirement-first X-Ray and named-POC public research. |
 | `APOLLO_API_KEY` | Approved primary paid contact discovery provider. |
 | `SNOV_CLIENT_ID` / `SNOV_CLIENT_SECRET` | Approved secondary contact discovery provider. Legacy aliases are supported by code. |
 | `REACHER_BASE_URL` | Email verification endpoint. |

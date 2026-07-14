@@ -1,7 +1,7 @@
 /**
  * Wizmatch X-Ray SERP Scraper Service
  *
- * Uses SerpAPI to run Google X-ray searches for LinkedIn profiles.
+ * Uses SearchAPI.io to run Google X-ray searches for public LinkedIn results.
  * Extracts candidate info from search results and creates contacts + candidates.
  *
  * Free tier: 100 searches/mo — runs 3/day max.
@@ -15,6 +15,7 @@ import { wizmatchCandidates } from '../db/schema';
 import { findOrCreateContact } from './contactService';
 import logger from '../utils/logger';
 import { createSourceRun, finishSourceRun, getWizmatchSourcingConfig } from './wizmatchSourcing';
+import { assertSearchApiAllowance, getSearchApiRunUsage, searchPublicWeb } from './wizmatchSearchApi';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,23 +142,40 @@ export function buildRequirementXraySearch(skill: string, location: string): Xra
   };
 }
 
+export function buildReviewedRequirementXraySearch(input: {
+  mandatorySkills: string[]; preferredSkills?: string[]; location?: string | null; workMode?: string | null; minExperience?: number | null;
+}): XrayQuery {
+  const mandatory = input.mandatorySkills.map((skill) => skill.trim()).filter(Boolean);
+  const preferred = (input.preferredSkills || []).map((skill) => skill.trim()).filter(Boolean);
+  const location = String(input.location || 'India').trim();
+  const mandatoryClause = mandatory.map((skill) => `"${skill}"`).join(' ');
+  const preferredClause = preferred.length ? ` (${preferred.map((skill) => `"${skill}"`).join(' OR ')})` : '';
+  const experience = input.minExperience ? ` "${input.minExperience}+ years"` : '';
+  const workMode = input.workMode ? ` "${input.workMode}"` : '';
+  return {
+    q: `site:linkedin.com/in ${mandatoryClause}${preferredClause} "${location}"${workMode}${experience} ("open to work" OR "looking for opportunities")`,
+    label: `Requirement: ${mandatory.join(', ')} in ${location}`,
+    skills: [...mandatory, ...preferred].map((skill) => skill.toLowerCase()),
+  };
+}
+
 // ── Main scraper ─────────────────────────────────────────────────────────────
 
 export async function runXrayScrape(
   maxQueries = 3,
-  adhocQuery?: { skill: string; location: string },
+  adhocQuery?: { skill: string; location: string; query?: XrayQuery },
   context: { requirementId?: string | null; requestedBy?: string | null } = {},
 ): Promise<XrayResult> {
   const tenantId = process.env.WIZMATCH_TENANT_ID;
-  const serpApiKey = process.env.SERPAPI_API_KEY;
+  const searchApiKey = process.env.SEARCHAPI_API_KEY;
 
   if (!tenantId) {
     logger.warn('[wizmatch-xray] WIZMATCH_TENANT_ID not set — skipping');
     return { queries_run: 0, candidates_found: 0, candidates_created: 0, skipped_exists: 0, errors: 0 };
   }
 
-  if (!serpApiKey) {
-    logger.warn('[wizmatch-xray] SERPAPI_API_KEY not set — skipping');
+  if (!searchApiKey) {
+    logger.warn('[wizmatch-xray] SEARCHAPI_API_KEY not set — skipping');
     return { queries_run: 0, candidates_found: 0, candidates_created: 0, skipped_exists: 0, errors: 0 };
   }
 
@@ -170,7 +188,7 @@ export async function runXrayScrape(
     // On-demand path (recruiter-triggered "Source now"): run exactly ONE query for
     // the requested skill+location. Does not touch the daily rotating cron set below.
     // SerpAPI free tier is ~100 searches/month — callers must not loop this.
-    todayQueries = [buildRequirementXraySearch(adhocQuery.skill, adhocQuery.location)];
+    todayQueries = [adhocQuery.query || buildRequirementXraySearch(adhocQuery.skill, adhocQuery.location)];
   } else {
     // Rotate queries day-by-day
     const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
@@ -187,17 +205,7 @@ export async function runXrayScrape(
 
   for (const search of todayQueries) {
     try {
-      const url = `https://serpapi.com/search?engine=google&q=${encodeURIComponent(search.q)}&api_key=${serpApiKey}&num=10`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
-
-      if (!res.ok) {
-        logger.warn(`[wizmatch-xray] SerpAPI returned ${res.status} for "${search.label}"`);
-        totalErrors++;
-        continue;
-      }
-
-      const data = await res.json() as { organic_results?: SerpResult[] };
-      const results = data.organic_results || [];
+      const results = await searchPublicWeb(search.q) as SerpResult[];
 
       totalFound += results.length;
 
@@ -267,8 +275,7 @@ export async function runXrayScrape(
       logger.error(`[wizmatch-xray] Query "${search.label}" failed:`, e instanceof Error ? e.message : String(e));
     }
 
-    // Delay between searches (SerpAPI rate limit)
-    await new Promise((r) => setTimeout(r, 3000));
+    if (todayQueries.length > 1) await new Promise((r) => setTimeout(r, 1000));
   }
 
   if (sourceRun) {
@@ -297,7 +304,8 @@ export async function runRequirementXray(tenantId: string, requirementId: string
   if (!config.xrayEnabled) throw new Error('Requirement-first X-Ray is disabled or not configured');
   const requirement = await pool.query(
     `SELECT r.id,r.location,r.work_mode,r.min_experience,r.stage,
-            ARRAY_REMOVE(ARRAY_AGG(CASE WHEN rs.importance='mandatory' THEN s.canonical_label END),NULL) AS mandatory_skills
+            ARRAY_REMOVE(ARRAY_AGG(CASE WHEN rs.importance='mandatory' THEN s.canonical_label END),NULL) AS mandatory_skills,
+            ARRAY_REMOVE(ARRAY_AGG(CASE WHEN rs.importance='preferred' THEN s.canonical_label END),NULL) AS preferred_skills
      FROM wizmatch_requirements r
      LEFT JOIN wizmatch_requirement_skills rs ON rs.requirement_id=r.id AND rs.tenant_id=r.tenant_id
      LEFT JOIN wizmatch_skills s ON s.id=rs.skill_id AND s.tenant_id=rs.tenant_id
@@ -308,21 +316,22 @@ export async function runRequirementXray(tenantId: string, requirementId: string
   if (!['accepted', 'sourcing', 'covered'].includes(requirement.rows[0].stage)) {
     throw new Error('Requirement must be accepted before candidate sourcing');
   }
-  const skill = requirement.rows[0].mandatory_skills?.[0];
-  if (!skill) throw new Error('Requirement needs at least one canonical mandatory skill');
+  const skills = requirement.rows[0].mandatory_skills || [];
+  if (!skills.length) throw new Error('Requirement needs at least one canonical mandatory skill');
   const cooldown = await pool.query(
     `SELECT 1 FROM wizmatch_source_runs WHERE tenant_id=$1 AND provider='xray' AND requirement_id=$2
      AND status IN ('succeeded','partial') AND created_at > NOW()-INTERVAL '7 days' LIMIT 1`,
     [tenantId, requirementId],
   );
   if (cooldown.rows.length) throw new Error('This requirement already used X-Ray in the last seven days');
-  const usage = await pool.query(
-    `SELECT COUNT(*) FILTER (WHERE created_at::date=CURRENT_DATE)::int AS daily,
-            COUNT(*) FILTER (WHERE date_trunc('month',created_at)=date_trunc('month',NOW()))::int AS monthly
-     FROM wizmatch_source_runs WHERE tenant_id=$1 AND provider='xray' AND status IN ('succeeded','partial','running')`,
-    [tenantId],
-  );
-  if ((usage.rows[0]?.daily || 0) >= config.xrayDailyCap) throw new Error('Daily X-Ray cap reached');
-  if ((usage.rows[0]?.monthly || 0) >= config.xrayMonthlyCap) throw new Error('Monthly X-Ray cap reached');
-  return runXrayScrape(1, { skill, location: requirement.rows[0].location || 'India' }, { requirementId, requestedBy });
+  const usage = await getSearchApiRunUsage(tenantId);
+  assertSearchApiAllowance(usage, { daily: config.searchApiDailyCap, monthly: config.searchApiMonthlyCap });
+  const query = buildReviewedRequirementXraySearch({
+    mandatorySkills: skills,
+    preferredSkills: requirement.rows[0].preferred_skills || [],
+    location: requirement.rows[0].location || 'India',
+    workMode: requirement.rows[0].work_mode,
+    minExperience: requirement.rows[0].min_experience,
+  });
+  return runXrayScrape(1, { skill: skills[0], location: requirement.rows[0].location || 'India', query }, { requirementId, requestedBy });
 }
