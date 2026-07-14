@@ -102,19 +102,19 @@ export default function WizmatchCandidatesPage() {
 
       <div className="mb-4 flex gap-3 flex-wrap">
         <div className="relative w-[200px]">
-          <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input placeholder="Search skill…" value={filters.skill} onChange={e => updateFilter('skill', e.target.value)} className="input pl-8 w-full" />
         </div>
         <input placeholder="Location…" value={filters.location} onChange={e => updateFilter('location', e.target.value)} className="input w-[160px]" />
-        <select value={filters.visa_status} onChange={e => updateFilter('visa_status', e.target.value)} className="input w-auto">
+        <select aria-label="Filter by visa status" value={filters.visa_status} onChange={e => updateFilter('visa_status', e.target.value)} className="input w-auto">
           <option value="">Any Visa</option>
           <option>H1B</option><option>GC</option><option>USC</option><option>OPT</option><option>unknown</option>
         </select>
-        <select value={filters.availability_status} onChange={e => updateFilter('availability_status', e.target.value)} className="input w-auto">
+        <select aria-label="Filter by availability" value={filters.availability_status} onChange={e => updateFilter('availability_status', e.target.value)} className="input w-auto">
           <option value="">Any Availability</option>
           <option>available</option><option>submitted</option><option>interviewing</option><option>placed</option><option>benched</option>
         </select>
-        <select value={filters.source} onChange={e => updateFilter('source', e.target.value)} className="input w-auto">
+        <select aria-label="Filter by source" value={filters.source} onChange={e => updateFilter('source', e.target.value)} className="input w-auto">
           <option value="">Any Source</option>
           <option>xray</option><option>github</option><option>naukri</option><option>manual</option><option>referral</option>
         </select>
@@ -136,7 +136,7 @@ export default function WizmatchCandidatesPage() {
             </tr>
           </thead>
           <tbody>
-            {loading ? <tr><td colSpan="8" className="px-4 py-8 text-center text-neutral-400">Loading...</td></tr>
+            {loading ? <tr><td colSpan="8" className="px-4 py-8 text-center text-neutral-500">Loading...</td></tr>
             : candidates.map(c => (
               <tr key={c.id} onClick={() => setSelected(c)} className="cursor-pointer hover:bg-neutral-50">
                 <td className="font-medium text-neutral-900">{c.first_name} {c.last_name}</td>
@@ -159,12 +159,12 @@ export default function WizmatchCandidatesPage() {
             <button
               disabled={!hasPrev}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className={`text-[12.5px] font-semibold px-3.5 py-1.5 border border-neutral-200 rounded-md ${hasPrev ? 'bg-neutral-100 text-neutral-700' : 'bg-neutral-100 text-neutral-400 opacity-60'}`}
+              className={`text-[12.5px] font-semibold px-3.5 py-1.5 border border-neutral-200 rounded-md ${hasPrev ? 'bg-neutral-100 text-neutral-700' : 'bg-neutral-100 text-neutral-500 opacity-60'}`}
             >← Prev</button>
             <button
               disabled={!hasNext}
               onClick={() => setPage((p) => p + 1)}
-              className={`text-[12.5px] font-semibold px-3.5 py-1.5 border border-neutral-200 rounded-md ${hasNext ? 'bg-neutral-100 text-neutral-700' : 'bg-neutral-100 text-neutral-400 opacity-60'}`}
+              className={`text-[12.5px] font-semibold px-3.5 py-1.5 border border-neutral-200 rounded-md ${hasNext ? 'bg-neutral-100 text-neutral-700' : 'bg-neutral-100 text-neutral-500 opacity-60'}`}
             >Next →</button>
           </div>
         </div>
@@ -354,7 +354,7 @@ function CandidateDetailDrawer({ candidateId, onClose, onChanged }) {
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end" onClick={onClose}>
         <div className="bg-white w-[600px] max-w-[95vw] h-full shadow-modal flex items-center justify-center" onClick={e => e.stopPropagation()}>
-          <p className="text-neutral-400">Loading candidate…</p>
+          <p className="text-neutral-500">Loading candidate…</p>
         </div>
       </div>
     );
@@ -364,7 +364,7 @@ function CandidateDetailDrawer({ candidateId, onClose, onChanged }) {
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end" onClick={onClose}>
         <div className="bg-white w-[600px] max-w-[95vw] h-full shadow-modal p-6" onClick={e => e.stopPropagation()}>
-          <div className="flex justify-end mb-4"><button onClick={onClose} className="text-neutral-400 hover:text-neutral-600"><X className="w-5 h-5" /></button></div>
+          <div className="flex justify-end mb-4"><button onClick={onClose} className="text-neutral-500 hover:text-neutral-600"><X className="w-5 h-5" /></button></div>
           <ErrorRetry message={error} onRetry={load} retrying={loading} />
         </div>
       </div>
@@ -389,7 +389,7 @@ function CandidateDetailDrawer({ candidateId, onClose, onChanged }) {
               {detail.company_name || 'No current employer on file'} · {detail.source}
             </p>
           </div>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-neutral-500 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-5">
@@ -416,7 +416,7 @@ function CandidateDetailDrawer({ candidateId, onClose, onChanged }) {
             <div className="flex flex-wrap gap-1.5 mb-3">
               {(detail.skills || []).length
                 ? detail.skills.map((s, i) => <span key={i} className="badge-info text-[10px]">{s}</span>)
-                : <span className="text-[11.5px] text-neutral-400">No free-text skills on file</span>}
+                : <span className="text-[11.5px] text-neutral-500">No free-text skills on file</span>}
             </div>
             {canonicalSkills.length > 0 && (
               <div className="space-y-1.5">
@@ -437,14 +437,14 @@ function CandidateDetailDrawer({ candidateId, onClose, onChanged }) {
               </div>
             )}
             {staffingUnavailable && (
-              <p className="text-[11.5px] text-neutral-400 mt-2">Canonical skill tagging isn't enabled in this environment (Wizmatch staffing Gate B is off).</p>
+              <p className="text-[11.5px] text-neutral-500 mt-2">Canonical skill tagging isn't enabled in this environment (Wizmatch staffing Gate B is off).</p>
             )}
           </section>
 
           <section className="border-t border-neutral-100 pt-4">
             <h3 className="text-[13px] font-bold text-neutral-900 mb-2">Requirement matches</h3>
             {staffingUnavailable ? (
-              <p className="text-[12px] text-neutral-400">Explainable matching isn't enabled in this environment (Wizmatch staffing Gate B is off).</p>
+              <p className="text-[12px] text-neutral-500">Explainable matching isn't enabled in this environment (Wizmatch staffing Gate B is off).</p>
             ) : matches.length === 0 ? (
               <EmptyState
                 title="No requirement matches yet"
@@ -469,7 +469,7 @@ function CandidateDetailDrawer({ candidateId, onClose, onChanged }) {
 
           <section className="border-t border-neutral-100 pt-4">
             <h3 className="text-[13px] font-bold text-neutral-900 mb-2">Submission history</h3>
-            <p className="text-[12px] text-neutral-400">Not exposed by the candidate API yet — check the requirement's delivery board for submissions tied to this candidate.</p>
+            <p className="text-[12px] text-neutral-500">Not exposed by the candidate API yet — check the requirement's delivery board for submissions tied to this candidate.</p>
           </section>
 
           <section className="border-t border-neutral-100 pt-4 flex items-center justify-between">

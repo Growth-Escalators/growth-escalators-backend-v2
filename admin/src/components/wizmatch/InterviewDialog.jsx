@@ -59,47 +59,47 @@ export default function InterviewDialog({ open, mode = 'schedule', initial, load
       {({ firstFieldRef }) => (mode === 'schedule' ? (
         <>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Round type</label>
-            <select ref={firstFieldRef} value={roundType} onChange={(e) => setRoundType(e.target.value)} className="input w-full mt-1">
+            <label htmlFor="interview-round-type" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Round type</label>
+            <select id="interview-round-type" ref={firstFieldRef} value={roundType} onChange={(e) => setRoundType(e.target.value)} className="input w-full mt-1">
               {ROUND_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Scheduled at *</label>
-            <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="input w-full mt-1" />
+            <label htmlFor="interview-scheduled-at" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Scheduled at *</label>
+            <input id="interview-scheduled-at" type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="input w-full mt-1" />
           </div>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action</label>
-            <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} placeholder="Collect interview feedback" className="input w-full mt-1" />
+            <label htmlFor="interview-next-action" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action</label>
+            <input id="interview-next-action" value={nextAction} onChange={(e) => setNextAction(e.target.value)} placeholder="Collect interview feedback" className="input w-full mt-1" />
           </div>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action due</label>
-            <input type="datetime-local" value={nextActionDueAt} onChange={(e) => setNextActionDueAt(e.target.value)} className="input w-full mt-1" />
+            <label htmlFor="interview-next-action-due" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action due</label>
+            <input id="interview-next-action-due" type="datetime-local" value={nextActionDueAt} onChange={(e) => setNextActionDueAt(e.target.value)} className="input w-full mt-1" />
           </div>
         </>
       ) : (
         <>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Status</label>
-            <select ref={firstFieldRef} value={status} onChange={(e) => setStatus(e.target.value)} className="input w-full mt-1">
+            <label htmlFor="interview-status" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Status</label>
+            <select id="interview-status" ref={firstFieldRef} value={status} onChange={(e) => setStatus(e.target.value)} className="input w-full mt-1">
               {INTERVIEW_STATUSES.map((s) => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Feedback</label>
-            <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={3} className="input w-full mt-1 resize-y" />
+            <label htmlFor="interview-feedback" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Feedback</label>
+            <textarea id="interview-feedback" value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={3} className="input w-full mt-1 resize-y" />
           </div>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Outcome</label>
-            <input value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="pass / fail / on hold" className="input w-full mt-1" />
+            <label htmlFor="interview-outcome" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Outcome</label>
+            <input id="interview-outcome" value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="pass / fail / on hold" className="input w-full mt-1" />
           </div>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action</label>
-            <input value={nextAction} onChange={(e) => setNextAction(e.target.value)} className="input w-full mt-1" />
+            <label htmlFor="interview-update-next-action" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action</label>
+            <input id="interview-update-next-action" value={nextAction} onChange={(e) => setNextAction(e.target.value)} className="input w-full mt-1" />
           </div>
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action due</label>
-            <input type="datetime-local" value={nextActionDueAt} onChange={(e) => setNextActionDueAt(e.target.value)} className="input w-full mt-1" />
+            <label htmlFor="interview-update-next-action-due" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Next action due</label>
+            <input id="interview-update-next-action-due" type="datetime-local" value={nextActionDueAt} onChange={(e) => setNextActionDueAt(e.target.value)} className="input w-full mt-1" />
           </div>
         </>
       ))}

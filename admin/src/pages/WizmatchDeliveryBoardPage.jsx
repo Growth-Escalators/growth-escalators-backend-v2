@@ -231,7 +231,7 @@ export default function WizmatchDeliveryBoardPage() {
       )}
 
       {loading ? (
-        <div className="card p-8 text-center text-neutral-400">Loading delivery records…</div>
+        <div className="card p-8 text-center text-neutral-500">Loading delivery records…</div>
       ) : error && items.length === 0 ? (
         <ErrorRetry message={error} onRetry={load} />
       ) : items.length === 0 ? (
@@ -259,7 +259,7 @@ export default function WizmatchDeliveryBoardPage() {
                   <Fragment key={item.id}>
                     <tr>
                       <td className="w-8">
-                        <button type="button" onClick={() => toggleActivity(item)} className="text-neutral-400 hover:text-neutral-600" aria-label="Toggle activity">
+                        <button type="button" onClick={() => toggleActivity(item)} className="text-neutral-500 hover:text-neutral-600" aria-label="Toggle activity">
                           {expandedId === item.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                         </button>
                       </td>
@@ -410,8 +410,8 @@ export default function WizmatchDeliveryBoardPage() {
 }
 
 function ActivityPanel({ loading, events }) {
-  if (loading) return <p className="text-[12px] text-neutral-400">Loading activity…</p>;
-  if (!events.length) return <p className="text-[12px] text-neutral-400">No activity recorded yet.</p>;
+  if (loading) return <p className="text-[12px] text-neutral-500">Loading activity…</p>;
+  if (!events.length) return <p className="text-[12px] text-neutral-500">No activity recorded yet.</p>;
   return (
     <div className="space-y-1.5 max-h-56 overflow-y-auto">
       {events.slice(0, 30).map((e) => (
@@ -483,15 +483,15 @@ function PlacementDialog({ open, loading, error, onCancel, onSubmit }) {
         <>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Model</label>
-              <select ref={firstFieldRef} value={model} onChange={(e) => setModel(e.target.value)} className="input w-full mt-1">
+              <label htmlFor="placement-model" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Model</label>
+              <select id="placement-model" ref={firstFieldRef} value={model} onChange={(e) => setModel(e.target.value)} className="input w-full mt-1">
                 <option value="permanent">Permanent</option>
                 <option value="contract">Contract</option>
               </select>
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Currency</label>
-              <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="input w-full mt-1">
+              <label htmlFor="placement-currency" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Currency</label>
+              <select id="placement-currency" value={currency} onChange={(e) => setCurrency(e.target.value)} className="input w-full mt-1">
                 <option value="INR">INR</option>
                 <option value="USD">USD</option>
               </select>
@@ -499,19 +499,19 @@ function PlacementDialog({ open, loading, error, onCancel, onSubmit }) {
           </div>
           {model === 'permanent' ? (
             <div>
-              <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Permanent fee amount *</label>
-              <input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} className="input w-full mt-1" />
+              <label htmlFor="placement-fee-amount" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Permanent fee amount *</label>
+              <input id="placement-fee-amount" type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} className="input w-full mt-1" />
             </div>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Bill rate *</label>
-                  <input type="number" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} className="input w-full mt-1" />
+                  <label htmlFor="placement-bill-rate" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Bill rate *</label>
+                  <input id="placement-bill-rate" type="number" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} className="input w-full mt-1" />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Loaded cost *</label>
-                  <input type="number" value={loadedCost} onChange={(e) => setLoadedCost(e.target.value)} className="input w-full mt-1" />
+                  <label htmlFor="placement-loaded-cost" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Loaded cost *</label>
+                  <input id="placement-loaded-cost" type="number" value={loadedCost} onChange={(e) => setLoadedCost(e.target.value)} className="input w-full mt-1" />
                 </div>
               </div>
               {billAmount && loadedCost !== '' && (
@@ -521,15 +521,15 @@ function PlacementDialog({ open, loading, error, onCancel, onSubmit }) {
               )}
               {needsException && (
                 <div>
-                  <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Margin exception reason *</label>
-                  <input value={marginExceptionReason} onChange={(e) => setMarginExceptionReason(e.target.value)} className="input w-full mt-1" />
+                  <label htmlFor="placement-margin-exception" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Margin exception reason *</label>
+                  <input id="placement-margin-exception" value={marginExceptionReason} onChange={(e) => setMarginExceptionReason(e.target.value)} className="input w-full mt-1" />
                 </div>
               )}
             </>
           )}
           <div>
-            <label className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Start date</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input w-full mt-1" />
+            <label htmlFor="placement-start-date" className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Start date</label>
+            <input id="placement-start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input w-full mt-1" />
           </div>
         </>
       )}

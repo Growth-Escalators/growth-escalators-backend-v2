@@ -60,7 +60,7 @@ function WorkItemRow({ item }) {
       <div className="text-right shrink-0">
         {dueAt && <div className="text-[11px] text-neutral-500">{new Date(dueAt).toLocaleDateString()}</div>}
         {!isTask && item.sla_due_at && (
-          <div className="text-[10px] text-neutral-400">SLA {new Date(item.sla_due_at).toLocaleDateString()}</div>
+          <div className="text-[10px] text-neutral-500">SLA {new Date(item.sla_due_at).toLocaleDateString()}</div>
         )}
       </div>
     </a>
@@ -152,7 +152,7 @@ export default function WizmatchTodayPage() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return <div className="p-6"><div className="card p-8 text-center text-neutral-400">Loading Today…</div></div>;
+    return <div className="p-6"><div className="card p-8 text-center text-neutral-500">Loading Today…</div></div>;
   }
 
   if (error) {
@@ -225,7 +225,7 @@ export default function WizmatchTodayPage() {
               <ListChecks className="w-4 h-4 text-neutral-500" />
               <h3 className="font-bold text-neutral-900 text-[13.5px]">Team Review</h3>
               <span className="badge-muted text-[11px]">{teamReview.length}</span>
-              <span className="text-[10.5px] text-neutral-400">visible to leads/admins</span>
+              <span className="text-[10.5px] text-neutral-500">visible to leads/admins</span>
             </div>
             <div className="space-y-2">
               {teamReview.slice(0, 10).map((action, i) => (

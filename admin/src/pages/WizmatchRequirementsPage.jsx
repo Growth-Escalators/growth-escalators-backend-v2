@@ -560,7 +560,7 @@ function RequirementDetailDrawer({ requirement, onClose, onSaved, onFindCandidat
               {requirement.company_tier ? ` · Tier ${requirement.company_tier}` : ''}
             </p>
           </div>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-5">
@@ -800,7 +800,7 @@ function CandidateMatchesModal({ requirement, onClose }) {
             <h2 className="text-[18px] font-bold text-neutral-900">Candidate matches</h2>
             <p className="text-[12px] text-neutral-500 mt-0.5 truncate">{requirement.title} · read-only ranking, no outreach or submission</p>
           </div>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-neutral-400 hover:text-neutral-600 shrink-0"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-6 space-y-3">
           {loading ? (
