@@ -75,17 +75,17 @@ describe('Wizmatch staffing domain', () => {
     expect(fake.calls.some(call => call.sql.includes('UPDATE wizmatch_company_contacts'))).toBe(false);
   });
 
-  it('blocks acceptance until source, account owner, recruiter, SLA and next action are present', async () => {
+  it('blocks acceptance until source channel, account owner, recruiter, SLA and next action are present', async () => {
     const fake = fakePool((sql) => {
       if (sql.includes('SELECT * FROM wizmatch_requirements')) return { rows: [{ id: 'java-role', company_id: 'company-a', stage: 'qualifying', sla_due_at: null, next_action: null, next_action_due_at: null }], rowCount: 1 };
-      if (sql.includes('EXISTS(SELECT 1 FROM wizmatch_requirement_contacts')) return { rows: [{ has_primary: false, has_owner: false, has_recruiter: false }], rowCount: 1 };
+      if (sql.includes('EXISTS(SELECT 1 FROM wizmatch_requirement_contacts')) return { rows: [{ has_primary: false, has_primary_channel: false, has_owner: false, has_recruiter: false }], rowCount: 1 };
       return { rows: [], rowCount: 1 };
     });
     const service = createWizmatchStaffingService(fake.pool);
 
     await expect(service.transitionRequirement(
       { tenantId: 'tenant-a', userId: 'actor' }, 'java-role', { stage: 'accepted' },
-    )).rejects.toThrow(/primary source contact, account owner, recruiter, SLA due date, dated next action/);
+    )).rejects.toThrow(/primary source contact, primary source contact channel, account owner, recruiter, SLA due date, dated next action/);
     expect(fake.calls.at(-1)?.sql).toBe('ROLLBACK');
   });
 

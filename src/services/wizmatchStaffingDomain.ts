@@ -419,12 +419,18 @@ export function createWizmatchStaffingService(dbPool: TransactionPool = pool) {
           const readiness = await client.query(
             `SELECT
                EXISTS(SELECT 1 FROM wizmatch_requirement_contacts WHERE tenant_id=$1 AND requirement_id=$2 AND active AND is_primary_source) AS has_primary,
+               EXISTS(SELECT 1 FROM wizmatch_requirement_contacts rc
+                 JOIN wizmatch_company_contacts cc ON cc.id=rc.company_contact_id AND cc.tenant_id=rc.tenant_id
+                 JOIN contact_channels ch ON ch.contact_id=cc.contact_id AND ch.tenant_id=rc.tenant_id
+                 WHERE rc.tenant_id=$1 AND rc.requirement_id=$2 AND rc.active AND rc.is_primary_source
+                   AND ch.channel_type IN ('email','phone','whatsapp') AND COALESCE(ch.channel_value,'')<>'') AS has_primary_channel,
                EXISTS(SELECT 1 FROM wizmatch_requirement_assignments WHERE tenant_id=$1 AND requirement_id=$2 AND active AND role='account_owner') AS has_owner,
                EXISTS(SELECT 1 FROM wizmatch_requirement_assignments WHERE tenant_id=$1 AND requirement_id=$2 AND active AND role='recruiter') AS has_recruiter`,
             [actor.tenantId, requirementId],
           );
           const missing: string[] = [];
           if (!readiness.rows[0].has_primary) missing.push('primary source contact');
+          if (!readiness.rows[0].has_primary_channel) missing.push('primary source contact channel');
           if (!readiness.rows[0].has_owner) missing.push('account owner');
           if (!readiness.rows[0].has_recruiter) missing.push('recruiter');
           if (!requirement.rows[0].sla_due_at) missing.push('SLA due date');

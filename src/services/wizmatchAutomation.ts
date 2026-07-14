@@ -15,6 +15,7 @@ export interface WizmatchAutomationStatus {
   sendingEnabled: boolean;
   schedule: string;
   nextExpectedRunAt: string | null;
+  sourcing: ReturnType<typeof getWizmatchSourcingConfig>;
 }
 
 export function nextStaffingReminderAt(now = new Date()): string {
@@ -44,5 +45,7 @@ export function getWizmatchAutomationStatus(
     sendingEnabled: enabled(env.WIZMATCH_SENDING_ENABLED),
     schedule: WIZMATCH_STAFFING_REMINDER_SCHEDULE,
     nextExpectedRunAt: staffingRemindersEnabled ? nextStaffingReminderAt(now) : null,
+    sourcing: getWizmatchSourcingConfig(env),
   };
 }
+import { getWizmatchSourcingConfig } from './wizmatchSourcing';

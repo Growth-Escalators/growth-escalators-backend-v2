@@ -1422,6 +1422,11 @@ export function WizmatchReadinessPage({ demoMode = false, embedded = false }) {
               <GuardrailRow label="sendingEnabled" value={data.automation?.sendingEnabled ?? false} />
               <GuardrailRow label="schedule" value={data.automation?.schedule || '09:17 IST Monday-Saturday'} />
               <GuardrailRow label="nextExpectedRunAt" value={data.automation?.nextExpectedRunAt || 'not scheduled'} />
+              <GuardrailRow label="sourceAutomation" value={data.automation?.sourcing?.masterEnabled ?? false} />
+              <GuardrailRow label="TheirStack" value={data.automation?.sourcing?.theirstackEnabled ? 'active' : data.automation?.sourcing?.theirstackConfigured ? 'configured, off' : 'key missing'} />
+              <GuardrailRow label="ATS polling" value={data.automation?.sourcing?.atsEnabled ?? false} />
+              <GuardrailRow label="Requirement X-Ray" value={data.automation?.sourcing?.xrayEnabled ? 'active' : data.automation?.sourcing?.xrayConfigured ? 'configured, off' : 'key missing'} />
+              <GuardrailRow label="POC discovery" value={data.automation?.sourcing?.pocDiscoveryEnabled ?? false} />
             </div>
           </div>
           <div className="card p-5">
