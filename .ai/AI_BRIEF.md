@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate with: npm run ai:brief -->
 
-_Generated: 2026-07-14T03:53:10.171Z_
+_Generated: 2026-07-14T06:13:50.795Z_
 
 This is a machine-generated snapshot of local repo state. It exists so any AI agent or fresh
 chat can rebuild context from the repo alone. For durable guidance read `AGENTS.md`,
@@ -12,14 +12,13 @@ chat can rebuild context from the repo alone. For durable guidance read `AGENTS.
 
 - **Repo**: Growth-Escalators/Growth-Escalators-CRM
 - **Branch**: `codex/wizmatch-phase0-trust`
-- **Last commit**: 1ceada3 feat(wizmatch): isolate safe staffing reminders (15 minutes ago)
-- **Uncommitted changes**: 6 file(s)
+- **Last commit**: 187c741 fix(wizmatch): block quota sourcing when providers are off (12 minutes ago)
+- **Uncommitted changes**: 5 file(s)
 
 ## Current task
 
-**Wizmatch Staffing OS — the safe-automation release candidate is fully qualified locally and on
-isolated staging. The next guarded action is applying additive production migrations 0025–0028
-with all staffing gates off.**
+**Wizmatch Staffing OS — controlled production launch is live for Jatin and Kanishk. Keep the
+named-pilot roster restricted while completing the 48-hour read-only observation window.**
 
 Work only in `/Users/jatinagrawal/repo-comparison/v2-wizmatch-phase0-trust` on
 `codex/wizmatch-phase0-trust`. Preserve the unrelated dirty workspace at
@@ -30,16 +29,16 @@ Work only in `/Users/jatinagrawal/repo-comparison/v2-wizmatch-phase0-trust` on
 ## Recent commits
 
 ```
+187c741 fix(wizmatch): block quota sourcing when providers are off
+9bbb570 fix(wizmatch): use runtime staffing phase access
+e38bdb9 fix(wizmatch): require dedicated private document bucket
+20e68da docs(wizmatch): hand off production launch gate
 1ceada3 feat(wizmatch): isolate safe staffing reminders
 cfbd804 chore(ai): record production safety hardening
 32c7ac9 chore(ai): record authenticated Wizmatch QA
 1bea426 fix(wizmatch): hide demo preview links in production
 5e1f3e6 chore(ai): record production launch qualification
 cdc1cf4 chore(ai): record Wizmatch credential rotation
-51bec73 chore(ai): record final staffing staging qualification
-9f4c0f4 fix(wizmatch): enforce staffing pilot access policy
-a5863d8 chore(ai): record staging placements smoke
-ef2112f fix(wizmatch): verify staging delivery economics
 ```
 
 ## npm scripts

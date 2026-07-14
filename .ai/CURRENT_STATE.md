@@ -2,7 +2,38 @@
 
 _Update this when the working state of the repo meaningfully changes. Keep it short and true._
 
-## 2026-07-14 Safe staffing automation release candidate (current)
+## 2026-07-14 Controlled production launch (current)
+
+- Commit `187c741` is live in production through Railway deployment
+  `cd9c71ec-2f77-4a5d-b583-cdf3a55be9f5` (`SUCCESS`). The branch is synchronized with
+  `origin/main` at that commit before this context-only update.
+- Reviewed additive migrations `0025`–`0028` applied successfully. Production journal count is 27
+  with `0028` latest; the historical database was already missing two old journal rows, so the
+  expected current count is 27 rather than the scratch-database count of 29. Staffing schema,
+  constraints and tenant boundaries passed verification; baseline CRM counts did not fall.
+- Gate A/B/C server and UI access are live only for Jatin and Kanishk. Both are existing admins;
+  pilot-all remains false and direct non-roster access fails closed. No extra users were created.
+- The idempotent pilot taxonomy contains four canonical skills and eight reviewed aliases. Legacy
+  candidates remain unreviewed/excluded until evidence is validated by a human.
+- Private document storage now requires a dedicated `R2_PRIVATE_BUCKET_NAME`. A retained labelled
+  non-PII QA PDF proved `r2://` storage, public/unsigned denial and a 300-second signed URL. The
+  original harmless QA upload in the legacy bucket remains unreferenced because production
+  deletion was forbidden.
+- Staffing reminders are enabled in the single web process at 09:17 IST Monday–Saturday. Logs show
+  one schedule. Legacy Wizmatch automation, sending, paid discovery and Google fallback are off;
+  provider-backed X-Ray sourcing is now rejected server-side and disabled honestly in the UI.
+- Final verification passed: build; 46 files / 372 Vitest tests; admin build; 17/17 Playwright;
+  fresh 29-entry migration apply (81 public/31 Wizmatch tables); gates-off bundle; secret scan;
+  diff check. Production browser QA covered 35 routes at desktop, 768px tablet and 390px mobile.
+- Production health/database, runtime staffing navigation, My Work and the final sourcing guard
+  passed authenticated retest. No production business record/document was deleted and no
+  fictional consent, submission, interview, offer, placement, invoice or collection was created.
+- The controlled launch is live. The only active release task is the 48-hour read-only observation
+  window. A thread heartbeat owns the 15-minute/one-hour follow-ups and the temporary
+  `wizmatch-48-hour-pilot-monitor` automation runs every six hours through the deadline; do not
+  expand the roster or activate excluded automation during it.
+
+## 2026-07-14 Safe staffing automation release candidate (historical pre-launch)
 
 - Commit `1ceada3` is the current reviewed candidate. It leaves all non-Wizmatch Growth jobs
   unchanged, defaults legacy Wizmatch sourcing/enrichment/scrapers/importers/digests off, and
@@ -28,7 +59,7 @@ _Update this when the working state of the repo meaningfully changes. Keep it sh
   be provisioned. The next action is separate approval for additive production migrations
   0025–0028 with gates and staffing automation off.
 
-## 2026-07-14 Authenticated production QA and final staging repair (current)
+## 2026-07-14 Authenticated production QA and final staging repair (historical pre-launch)
 
 - Production `web` safety variables are now hardened under explicit approval: Jatin/Kanishk named
   roster, pilot-all=false, all Gate A/B/C server+Vite flags=false, sending=false, paid discovery

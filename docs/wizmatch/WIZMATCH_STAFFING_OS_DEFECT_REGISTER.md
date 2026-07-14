@@ -59,16 +59,20 @@ the evidence explicitly says otherwise. Never promote a status based only on an 
 | D-29 | P1 | 0 | `verified_local` | Server no longer serves tracked `public/admin`; missing current `dist/public/admin` returns an explicit CRM 503 while API routes continue. Admin production build passes. | Decide separately whether to delete the now-unused tracked artifact directory. |
 | D-30 | P3 | 0 | `verified_local` | Private routes preserve `tenant=wizmatch` and a same-origin return path; Login restores the safe path after success. Direct-route Chromium test passes. | Authenticated post-release login smoke. |
 | D-31 | P2 | 0 | `verified_local` | Route error-boundary reset key includes pathname and search params. A development-only deliberately-throwing route proves query navigation recovers the boundary in Chromium. | Authenticated System-tab smoke after release. |
+| D-32 | P1 | 1/2/3 | `production_verified` | Build-time Vite flags left the deployed staffing navigation hidden after server gates were activated. Commit `9bbb570` now loads `/api/wizmatch/staffing/access` at runtime, fails closed with Error/Retry states, and drives both navigation and direct-route guards. Staging and authenticated production My Work/navigation retests passed. | Monitor access failures during the named pilot. |
+| D-33 | P1 | 3 | `production_verified` | The legacy document bucket had a public endpoint. Commit `e38bdb9` requires a dedicated `R2_PRIVATE_BUCKET_NAME`; Gate C was closed until a new private bucket and retained non-PII QA PDF proved failed public/unsigned access and 300-second signed access. | Monitor signed-access failures; never place staffing documents in the legacy bucket. |
+| D-34 | P1 | 0 | `production_verified` | Source Candidates still exposed LinkedIn X-Ray while paid discovery and Google fallback were off. Commit `187c741` adds a shared fail-closed cost guard, server 403 before provider use, honest disabled UI, Vitest coverage and a seventeenth Playwright scenario. Staging and production API/UI retests passed. | Keep paid discovery and Google fallback off; any future enablement needs the cost-go-live process. |
 
 ## Release gates for the current local bundle
 
-- Additive schema/migrations and a feature-gated zero-cost staffing reminder cron are included
-  locally under the approved three-phase plan. No auth/RBAC middleware, payment processor,
-  scheduled Slack-DM, deployment, environment, sending, provider-enable, cap, budget, or
-  production-data change was executed.
+- Additive migrations `0025`–`0028`, the reviewed application and Gate A/B/C are live for the
+  named Jatin/Kanishk pilot. The safe staffing reminder runs in the web process. Auth/RBAC
+  middleware, payment processing, scheduled Slack-DM, sending, providers, caps and budgets were
+  not changed; no fictional production business record was created and no data was deleted.
 - A real Contact Intelligence discovery run can spend configured provider budget and is not part of
   safe verification.
 - A real uploaded requirement can write a source file and call the AI provider; start with a pasted,
   sanitized JD in a patched local/staging build.
 - This branch lives in a separate clean worktree; the original dirty workspace remains preserved.
-  Continue staging by explicit path and never use `git add .`.
+  The controlled production launch is in its 48-hour observation window. Continue by explicit
+  path and never use `git add .`.
