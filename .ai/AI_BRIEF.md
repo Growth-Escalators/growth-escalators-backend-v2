@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate with: npm run ai:brief -->
 
-_Generated: 2026-07-14T09:36:24.152Z_
+_Generated: 2026-07-14T09:45:56.682Z_
 
 This is a machine-generated snapshot of local repo state. It exists so any AI agent or fresh
 chat can rebuild context from the repo alone. For durable guidance read `AGENTS.md`,
@@ -12,13 +12,14 @@ chat can rebuild context from the repo alone. For durable guidance read `AGENTS.
 
 - **Repo**: Growth-Escalators/Growth-Escalators-CRM
 - **Branch**: `codex/wizmatch-phase0-trust`
-- **Last commit**: 142eb51 fix(wizmatch): harden provider quota and retries (11 minutes ago)
+- **Last commit**: 05a5c5a docs(wizmatch): hand off provider activation release (9 minutes ago)
 - **Uncommitted changes**: 4 file(s)
 
 ## Current task
 
-**Wizmatch results-first sourcing — SearchAPI.io, TheirStack, ATS and named-POC provider release is
-staging-qualified. Deploy the exact reviewed commits and activate the two-user production pilot.**
+**Wizmatch results-first sourcing — provider release is live for the Jatin/Kanishk production
+pilot. Review genuine signals and configure approved ATS boards; enable X-Ray only after the first
+genuine accepted, skill-reviewed requirement exists.**
 
 Work only in `/Users/jatinagrawal/repo-comparison/v2-wizmatch-phase0-trust` on
 `codex/wizmatch-phase0-trust`. Preserve the unrelated dirty workspace at
@@ -29,6 +30,7 @@ Work only in `/Users/jatinagrawal/repo-comparison/v2-wizmatch-phase0-trust` on
 ## Recent commits
 
 ```
+05a5c5a docs(wizmatch): hand off provider activation release
 142eb51 fix(wizmatch): harden provider quota and retries
 c293b88 feat(wizmatch): integrate provider sourcing adapters
 22581fb docs(wizmatch): record sourcing phase-one release
@@ -38,7 +40,6 @@ c293b88 feat(wizmatch): integrate provider sourcing adapters
 9bbb570 fix(wizmatch): use runtime staffing phase access
 e38bdb9 fix(wizmatch): require dedicated private document bucket
 20e68da docs(wizmatch): hand off production launch gate
-1ceada3 feat(wizmatch): isolate safe staffing reminders
 ```
 
 ## npm scripts

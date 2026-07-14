@@ -13,8 +13,12 @@ _Update this when the working state of the repo meaningfully changes. Keep it sh
   X-Ray leads; ATS 10-job refresh with no errors.
 - Staging responsive browser smoke passed desktop/tablet/390px with no overflow, console errors or
   5xx. Final suite passed: build; 47 files/395 tests; admin build; 22/22 Playwright; diff check.
-- Production remains on the prior live release. Provider rollout is next; all new source controls
-  remain off there until the reviewed push and progressive variable activation.
+- Production is live at `05a5c5a`; deployments `5e8d1302-2c50-4a2b-b7b3-4f3e1e160023` and
+  `8d68a585-5277-4be4-8e90-cc830e1b4036` are `SUCCESS`. Source master, TheirStack, ATS and POC are
+  active for the two-user pilot. X-Ray is configured/off pending a genuine accepted reviewed role.
+- First production TheirStack run inserted 15 distinct genuine public signals with zero errors;
+  ATS is healthy but has zero approved company boards. Production responsive browser/API smoke had
+  no 5xx, console errors or layout overflow. Legacy automation/sending/paid/Google remain off.
 
 ## 2026-07-14 Results-first sourcing foundation (current)
 
