@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractKeywords, pollAshby, pollGreenhouse, pollLever } from '../services/wizmatchAtsPoller';
-import { buildTheirStackQuery, previewTheirStackImport } from '../services/wizmatchTheirStackImporter';
-import { buildRequirementXraySearch } from '../services/wizmatchXrayScraper';
+import { buildTheirStackQuery, fetchTheirStackPreview, parseTheirStackHiringTeam, previewTheirStackImport, validateTheirStackAccount } from '../services/wizmatchTheirStackImporter';
+import { buildRequirementXraySearch, buildReviewedRequirementXraySearch } from '../services/wizmatchXrayScraper';
+import { assertSearchApiAllowance, buildPocSearchQuery, classifyPocResult, searchPublicWeb, validateSearchApiAccount } from '../services/wizmatchSearchApi';
 import {
   getWizmatchSourcingConfig,
   ingestWizmatchSignals,
@@ -37,12 +38,12 @@ describe('results-first sourcing controls', () => {
       ...base,
       WIZMATCH_SOURCE_AUTOMATION_ENABLED: 'true',
       WIZMATCH_THEIRSTACK_LIMIT: '999',
-      WIZMATCH_XRAY_DAILY_CAP: '999',
-      WIZMATCH_XRAY_MONTHLY_CAP: '999',
+      WIZMATCH_SEARCHAPI_DAILY_CAP: '999',
+      WIZMATCH_SEARCHAPI_MONTHLY_CAP: '999',
     });
     expect(config.theirstackLimit).toBe(25);
-    expect(config.xrayDailyCap).toBe(10);
-    expect(config.xrayMonthlyCap).toBe(100);
+    expect(config.xrayDailyCap).toBe(5);
+    expect(config.xrayMonthlyCap).toBe(80);
   });
 
   it('excludes retained audit-only requirements from operating queues', () => {
@@ -79,6 +80,7 @@ describe('TheirStack pilot query', () => {
       discovered_at_gte: '2026-07-01T00:00:00.000Z',
     });
     expect(buildTheirStackQuery(15).job_title_or).toContain('sap abap');
+    expect(buildTheirStackQuery(15, null, true)).toMatchObject({ blur_company_data: true });
   });
 
   it('reports configuration without exposing the key', () => {
@@ -88,6 +90,60 @@ describe('TheirStack pilot query', () => {
     } as NodeJS.ProcessEnv);
     expect(preview).toMatchObject({ enabled: true, configured: true, limit: 15 });
     expect(JSON.stringify(preview)).not.toContain('secret');
+  });
+
+  it('parses optional hiring-team evidence without inventing channels', () => {
+    expect(parseTheirStackHiringTeam([{ full_name: 'Person A', job_title: 'Talent Acquisition', linkedin_url: 'https://linkedin.com/in/person-a' }]))
+      .toEqual([{ name: 'Person A', title: 'Talent Acquisition', linkedinUrl: 'https://linkedin.com/in/person-a', email: null }]);
+    expect(parseTheirStackHiringTeam([{ name: '' }, null])).toEqual([]);
+  });
+
+  it('uses free preview mode and sanitizes provider failures', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: [{ id: 'job-1', job_title: 'SAP ABAP', hiring_team: [{ name: 'Person A', title: 'Recruiter' }] }] }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const preview = await fetchTheirStackPreview({ THEIRSTACK_API_KEY: 'secret' } as NodeJS.ProcessEnv);
+    expect(preview).toMatchObject({ preview: true, fetched: 1 });
+    expect(JSON.stringify(preview)).not.toContain('secret');
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(request.blur_company_data).toBe(true);
+
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 402 });
+    const account = await validateTheirStackAccount({ THEIRSTACK_API_KEY: 'secret' } as NodeJS.ProcessEnv);
+    expect(account).toMatchObject({ configured: true, validated: false, error: 'TheirStack HTTP 402' });
+    expect(JSON.stringify(account)).not.toContain('secret');
+  });
+});
+
+describe('SearchAPI public research', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('normalizes Google results and never exposes the credential', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ organic_results: [{ position: 1, title: 'Person A - Talent Acquisition', link: 'https://linkedin.com/in/person-a', snippet: 'Recruiter at Company A' }] }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const results = await searchPublicWeb('query', { env: { SEARCHAPI_API_KEY: 'secret' } as NodeJS.ProcessEnv });
+    expect(results[0]).toMatchObject({ position: 1, link: 'https://linkedin.com/in/person-a' });
+    expect(JSON.stringify(results)).not.toContain('secret');
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('secret');
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer secret');
+  });
+
+  it.each([401, 402, 429, 500])('returns a safe HTTP %s error', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status }));
+    await expect(searchPublicWeb('query', { env: { SEARCHAPI_API_KEY: 'secret' } as NodeJS.ProcessEnv })).rejects.toThrow(`SearchAPI HTTP ${status}`);
+  });
+
+  it('reports account allowance and enforces the shared POC/X-Ray cap', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ account: { current_month_usage: 21, monthly_allowance: 100, remaining_credits: 79 } }) }));
+    expect(await validateSearchApiAccount({ SEARCHAPI_API_KEY: 'secret' } as NodeJS.ProcessEnv)).toMatchObject({ validated: true, usage: 21, allowance: 100, remaining: 79 });
+    expect(() => assertSearchApiAllowance({ daily: 5, monthly: 10 }, { daily: 5, monthly: 80 })).toThrow('Daily SearchAPI allowance reached');
+    expect(() => assertSearchApiAllowance({ daily: 1, monthly: 80 }, { daily: 5, monthly: 80 })).toThrow('Monthly SearchAPI allowance reached');
+  });
+
+  it('builds one company POC query and classifies public evidence only', () => {
+    expect(buildPocSearchQuery('Company A', 'company.example')).toContain('site:company.example');
+    expect(classifyPocResult({ position: 1, title: 'Person A - Talent Acquisition', link: 'https://linkedin.com/in/a', snippet: 'Recruiter' }))
+      .toMatchObject({ category: 'talent_acquisition', name: 'Person A' });
+    expect(classifyPocResult({ position: 1, title: 'Careers', link: 'https://example.com', snippet: 'Jobs' })).toEqual({ category: null, name: null });
   });
 });
 
@@ -118,5 +174,13 @@ describe('requirement-first LinkedIn X-Ray', () => {
     expect(buildRequirementXraySearch('SAP ABAP', 'Pune').q).toContain('"SAP ABAP developer"');
     expect(buildRequirementXraySearch('Java', 'Bengaluru').q).toContain('"Java developer"');
     expect(buildRequirementXraySearch('JavaScript', 'India').skills).toEqual(['javascript']);
+  });
+
+  it('uses all reviewed requirement evidence in one capped query', () => {
+    const search = buildReviewedRequirementXraySearch({ mandatorySkills: ['SAP ABAP'], preferredSkills: ['S/4HANA'], location: 'Pune', workMode: 'hybrid', minExperience: 5 });
+    expect(search.q).toContain('"SAP ABAP"');
+    expect(search.q).toContain('"S/4HANA"');
+    expect(search.q).toContain('"5+ years"');
+    expect(search.skills).toEqual(['sap abap', 's/4hana']);
   });
 });

@@ -77,7 +77,7 @@ If `WIZMATCH_TENANT_ID` is unset, **none of these run** (that's the master on/of
 | Wizmatch ATS Poller | daily 00:30 | FIND (demand) | Polls Greenhouse/Lever/Ashby public APIs for companies with an `ats_slug` already set → new/updated `wizmatch_job_signals`. Free, no auth. |
 | Wizmatch RemoteOK Importer | daily 01:30 | FIND (demand) | Free public `remoteok.com/api` feed, filtered to tech roles → `wizmatch_job_signals` via the shared `/signals/ingest` endpoint. |
 | Wizmatch TheirStack Importer | weekly Mon 01:30 | FIND (demand) | Paid API, India job postings (the $0-scrape workaround for Naukri, which blocks direct scraping) → `wizmatch_job_signals`. No-ops if `THEIRSTACK_API_KEY` unset; capped at `WIZMATCH_THEIRSTACK_LIMIT` (default 25/week). |
-| Wizmatch X-Ray Scraper | daily 02:30 | FIND (**supply**, not demand) | SerpAPI Google search for LinkedIn "open to work" profiles → new `wizmatch_candidates`. No email captured yet (enriched later). |
+| Wizmatch requirement X-Ray | manual, once per requirement per 7 days | FIND (**supply**, not demand) | SearchAPI.io public Google X-Ray search from reviewed requirement skills → unverified candidate leads. No email is guessed and no automatic matching/submission occurs. |
 | Wizmatch GitHub Miner | daily 03:30 | FIND (**supply**, not demand) | GitHub Search API by location+language, keeps only users with a public email → new `wizmatch_candidates`. |
 | Wizmatch LCA Importer | weekly Sun 16:30 | enrichment (not a signal source) | Downloads DOL H-1B/H-2B disclosure data, aggregates by employer name → updates `wizmatch_companies.h1b_sponsor_count` only. Does **not** create job signals. |
 | Wizmatch Daily Digest | Mon–Sat 12:30 | reporting | Digest summary to Slack. **Currently silently suppressed** — the call doesn't pass `allowDuringPause`, and the account-wide `SLACK_NOTIFICATIONS_PAUSED` flag is on, so the cron runs and logs "sent" but nothing reaches Slack. |
@@ -154,7 +154,7 @@ manual intake · GitHub Miner (daily) · X-Ray Scraper (daily) ─▶ contacts +
 
 - **GitHub Miner** (daily 03:30) — GitHub Search API by location+language, keeps only profiles with a
   public email, creates a contact + `wizmatch_candidates` row (source=`github`).
-- **X-Ray Scraper** (daily 02:30) — SerpAPI Google search (`site:linkedin.com/in ... "open to work"`),
+- **Requirement X-Ray** (manual, capped) — SearchAPI.io Google search (`site:linkedin.com/in ... "open to work"`),
   free tier 100 searches/mo so capped at 3 queries/day; creates a contact (no email yet) +
   `wizmatch_candidates` row (source=`xray`).
 

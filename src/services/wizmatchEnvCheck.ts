@@ -47,10 +47,10 @@ export const WIZMATCH_ENV_CHECKS: WizmatchEnvCheckDefinition[] = [
     note: 'Raises GitHub mining rate limits.',
   },
   {
-    key: 'SERPAPI_API_KEY',
+    key: 'SEARCHAPI_API_KEY',
     requirement: 'recommended',
     group: 'Sourcing',
-    note: 'Used by X-Ray/Google candidate discovery.',
+    note: 'Used by requirement-first X-Ray and named-POC public research.',
   },
   {
     key: 'APOLLO_API_KEY',
