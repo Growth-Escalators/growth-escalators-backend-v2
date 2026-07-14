@@ -14,6 +14,7 @@ export default defineConfig({
     'wizmatch-gate-bc-local.spec.ts',
     'wizmatch-sourcing-local.spec.ts',
     'wizmatch-e2e-hardening-*.spec.ts',
+    'wizmatch-a11y.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,
