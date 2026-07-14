@@ -6,6 +6,35 @@ Format: `## YYYY-MM-DD — <title> — <agent>` then a few bullets (what changed
 
 ---
 
+## 2026-07-14 — Controlled Staffing OS production launch — Codex — LIVE PRODUCTION
+
+- Applied only additive migrations `0025`–`0028` with gates off. Production advanced from 23 to
+  27 journal rows with `0028` latest; scratch remains 29 because two historical journal entries
+  were already absent in production. Staffing constraints/tenant boundaries passed and legacy CRM
+  baseline counts did not fall. The official backfill preview remained count-only and preserved
+  the audit-test requirement without guessed attribution.
+- Pushed and deployed the reviewed release, progressively enabled Gate A/B/C for the two-ID
+  Jatin/Kanishk roster, seeded four canonical SAP/Java skills plus eight aliases, and enabled the
+  safe in-process reminder. Pilot-all, legacy automation, sending, paid discovery and Google
+  fallback remain off; no worker exists.
+- Closed three launch defects through regression tests, isolated staging and production retest:
+  `e38bdb9` requires a dedicated private document bucket; `9bbb570` uses runtime staffing access
+  for UI navigation/routes; `187c741` blocks provider-backed X-Ray sourcing when provider controls
+  are off. Final deployment `cd9c71ec-2f77-4a5d-b583-cdf3a55be9f5` reached `SUCCESS`.
+- Retained one labelled non-PII QA PDF in the dedicated private bucket. It persists as `r2://`,
+  public and unsigned access fail, and five-minute signed access succeeds. No production object or
+  row was deleted.
+- Final suite passed: build; 46/372 Vitest; admin build; 17/17 Playwright; fresh 29-entry migration
+  apply (81 public/31 Wizmatch tables); production gates-off bundle; secret scan; diff check.
+- Authenticated production QA used Kanishk's Keychain credential without exposing it. All 35
+  visible/direct routes passed desktop, tablet and 390px mobile coverage; direct access, readiness,
+  empty states and unauthorized controls passed. No fictional production commercial outcome was
+  created.
+- Production is live for Jatin and Kanishk. The next unit is read-only monitoring through the
+  48-hour restricted-pilot window. A thread heartbeat owns the 15-minute/one-hour checks and
+  temporary automation `wizmatch-48-hour-pilot-monitor` runs every six hours through
+  `2026-07-16T06:12:00Z`; do not add users or expand product automation.
+
 ## 2026-07-14 — Safe staffing automation and final staging qualification — Codex — LOCAL + LIVE STAGING
 
 - Committed `1ceada3`: separated legacy Wizmatch automation from deterministic staffing reminders,
