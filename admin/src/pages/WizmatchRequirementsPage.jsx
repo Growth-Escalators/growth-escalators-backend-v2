@@ -1,9 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FileText, Upload, Sparkles, X, Download, Users, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../lib/api.js';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import MatchExplanation from '../components/wizmatch/MatchExplanation.jsx';
+import DataTable from '../components/ui/DataTable.jsx';
+import FilterBar from '../components/wizmatch/filters/FilterBar.jsx';
+import { useTableControls } from '../components/wizmatch/filters/useTableControls.js';
+import { applySort } from '../components/wizmatch/filters/filterPipeline.js';
+import { exportRowsToCsv } from '../components/wizmatch/filters/exportCsv.js';
 
 const STATUS_BADGE = {
   draft: 'badge-muted',
@@ -15,12 +20,40 @@ const REGION_BADGE = { india: 'badge-warning', us: 'badge-info' };
 const TIER_BADGE = { A: 'badge-success', B: 'badge-warning', C: 'badge-muted', Reject: 'badge-danger' };
 const MATCH_PRIORITY_BADGE = { hot: 'badge-success', warm: 'badge-info', watch: 'badge-warning', blocked: 'badge-danger' };
 
-const EMPTY_FILTERS = {
-  // India-only sourcing: default the requirements view to India (existing US
-  // requirements remain visible via the Region filter → "US"/"Any").
-  company: '', skill: '', min_experience: '', location: '',
-  work_mode: '', region: 'india', employment_type: '', priority: '', status: '',
-};
+const optsR = (arr) => arr.map((v) => ({ value: v, label: v }));
+const REQ_STAGES = ['draft', 'qualifying', 'accepted', 'sourcing', 'covered', 'submitted', 'interviewing', 'offer', 'filled', 'on_hold', 'closed_lost', 'cancelled'];
+
+// Declarative filter spec for the Requirements list (server-paginated — values
+// map to backend query params via serverKey/serverMinKey/etc). Enum sources of
+// truth: wizmatch_requirements status/stage/priority/work_mode/employment_type/
+// region/attribution_status + company_intelligence.qualification_tier.
+const REQ_FILTERS = [
+  { key: 'q', label: 'Title', type: 'search', placeholder: 'Search title…' },
+  { key: 'company', label: 'Company', type: 'search', placeholder: 'Company…' },
+  { key: 'skill', label: 'Skill', type: 'search', placeholder: 'Skill…' },
+  { key: 'location', label: 'Location', type: 'search', placeholder: 'Location…' },
+  { key: 'source_contact', label: 'Source person', type: 'search', placeholder: 'Source person…' },
+  { key: 'status', label: 'Status', type: 'multiselect', options: optsR(['draft', 'sheet_ready', 'shared', 'closed']) },
+  { key: 'stage', label: 'Stage', type: 'multiselect', options: REQ_STAGES.map((v) => ({ value: v, label: v.replace(/_/g, ' ') })) },
+  { key: 'priority', label: 'Priority', type: 'multiselect', options: optsR(['low', 'normal', 'high', 'urgent']) },
+  { key: 'work_mode', label: 'Work mode', type: 'multiselect', options: optsR(['onsite', 'hybrid', 'remote']) },
+  { key: 'employment_type', label: 'Employment', type: 'multiselect', options: [
+    { value: 'contract', label: 'Contract' }, { value: 'contract_c2c', label: 'Contract — C2C' },
+    { value: 'contract_w2', label: 'Contract — W2' }, { value: 'permanent', label: 'Permanent' }] },
+  { key: 'attribution_status', label: 'Attribution', type: 'multiselect', options: [
+    { value: 'needs_attribution', label: 'Needs attribution' }, { value: 'attributed', label: 'Attributed' }] },
+  { key: 'tier', label: 'Tier', type: 'multiselect', options: optsR(['A', 'B', 'C', 'Reject']) },
+  { key: 'region', label: 'Region', type: 'select', options: [{ value: 'india', label: 'India' }, { value: 'us', label: 'US' }], placeholder: 'Any region' },
+  { key: 'experience', label: 'Experience (yrs)', type: 'numberRange', serverMinKey: 'min_experience', serverMaxKey: 'experience_max' },
+  { key: 'budget', label: 'Budget', type: 'numberRange', serverMinKey: 'budget_min', serverMaxKey: 'budget_max' },
+  { key: 'has_matches', label: 'Has matches', type: 'toggle', serverKey: 'has_matches' },
+  { key: 'created', label: 'Created', type: 'dateRange', serverFromKey: 'created_from', serverToKey: 'created_to' },
+];
+
+// India-only sourcing: default the list to India (US requirements stay reachable
+// via Region → US, or clear the chip for Any). Module-level for stable identity.
+const REQ_DEFAULTS = { region: 'india' };
+const REQ_PAGE_SIZE = 50;
 
 function fmtBudget(r) {
   if (r.budget_min == null && r.budget_max == null) return '—';
@@ -49,52 +82,116 @@ export default function WizmatchRequirementsPage() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [selected, setSelected] = useState(null);
   const [matchesFor, setMatchesFor] = useState(null);
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [actionError, setActionError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
-  const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
 
-  // Deep link: /wizmatch/requirements?id=<uuid> opens that requirement's drawer
-  // directly (used by Global Search, Today, and the signal→requirement CTA).
-  useEffect(() => {
-    const id = searchParams.get('id');
-    if (!id) return undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await apiFetch(`/api/wizmatch/requirements/${id}`);
-        if (!cancelled) setSelected(r);
-      } catch { /* invalid/removed id — leave the list as-is */ }
-    })();
-    return () => { cancelled = true; };
-  }, [searchParams]);
-
-  const closeDetail = () => {
-    setSelected(null);
-    if (searchParams.get('id')) setSearchParams({}, { replace: true });
-  };
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ limit: 100 });
-      Object.entries(filters).forEach(([k, v]) => { if (v !== '' && v != null) params.set(k, v); });
-      const data = await apiFetch(`/api/wizmatch/requirements?${params}`);
-      setItems(data.items || []);
-      setTotal(data.total || 0);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  }, [filters]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const generateSheet = async (id) => {
+  // Decoupled from `load` (bumps a reload key instead) so it stays stable and can
+  // back the memoized action columns without a hook ordering cycle.
+  const generateSheet = useCallback(async (id) => {
     setActionError('');
     try {
       const { sheet_url } = await apiFetch(`/api/wizmatch/requirements/${id}/sheet`, { method: 'POST' });
       if (sheet_url) window.open(sheet_url, '_blank');
-      load();
+      setReloadKey((k) => k + 1);
     } catch (e) { setActionError('Sheet generation failed: ' + (e.message || '')); }
+  }, []);
+
+  // Columns carry per-cell renders (some with row-scoped actions), so they're
+  // built in-component; the two action columns are exportable:false so CSV skips
+  // them. Passed to both the hook (show/hide + sort) and DataTable.
+  const columns = useMemo(() => [
+    { key: 'title', label: 'Requirement', sortable: true, sortAccessor: (r) => r.title, exportValue: (r) => r.title,
+      render: (r) => (
+        <div>
+          <div className="font-medium text-neutral-900">{r.title}</div>
+          {r.required_skills?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">{r.required_skills.slice(0, 4).map((s, i) => <span key={i} className="badge-info text-[10px]">{s}</span>)}</div>
+          )}
+        </div>
+      ) },
+    { key: 'company_name', label: 'Client', sortable: true, exportValue: (r) => r.company_name || '',
+      render: (r) => (
+        <div>
+          <div className="font-medium text-neutral-900">{r.company_name || '—'}</div>
+          <span className={`${TIER_BADGE[r.company_tier] || 'badge-muted'} text-[10px] mt-1 inline-flex`}>{r.company_tier ? `Tier ${r.company_tier}` : '—'}</span>
+        </div>
+      ) },
+    { key: 'primary_source_name', label: 'Source person', exportValue: (r) => r.primary_source_name || '',
+      render: (r) => (<div><div className="font-medium">{r.primary_source_name || <span className="text-warning-700">Needs attribution</span>}</div><div className="text-[11px] text-neutral-500">{r.primary_source_email || ''}</div></div>) },
+    { key: 'assignments', label: 'Assigned team', exportable: false,
+      render: (r) => ((r.assignments || []).length ? (r.assignments || []).map(a => <div key={a.id} className="text-[11.5px]"><span className="font-medium">{a.name}</span> · {a.role.replace(/_/g, ' ')}</div>) : <span className="text-warning-700">Unassigned</span>) },
+    { key: 'location', label: 'Location', sortable: true, exportValue: (r) => [r.location, r.work_mode].filter(Boolean).join(' · '),
+      render: (r) => <span>{r.location || '—'}{r.work_mode ? ` · ${r.work_mode}` : ''}</span> },
+    { key: 'positions', label: 'Positions', sortable: true, exportValue: (r) => r.positions ?? 1, render: (r) => <span className="tabular-nums">{r.positions || 1}</span> },
+    { key: 'budget', label: 'Budget', sortable: true, sortAccessor: (r) => (r.budget_max ?? r.budget_min ?? null), exportValue: (r) => fmtBudget(r), render: (r) => <span className="font-mono text-neutral-900">{fmtBudget(r)}</span> },
+    { key: 'region', label: 'Region', sortable: true, exportValue: (r) => r.region || '', render: (r) => <span className={REGION_BADGE[r.region] || 'badge-muted'}>{r.region || '—'}</span> },
+    { key: 'status', label: 'Status', sortable: true, exportValue: (r) => `${r.stage || 'draft'} / ${r.status || ''}`,
+      render: (r) => (<div><span className="badge-info">{(r.stage || 'draft').replace(/_/g, ' ')}</span><div className="mt-1"><span className={STATUS_BADGE[r.status] || 'badge-muted'}>{r.status?.replace(/_/g, ' ')}</span></div></div>) },
+    { key: 'sheet', label: 'Sheet', exportable: false,
+      render: (r) => (
+        <div className="flex gap-2 justify-end" onClick={e => e.stopPropagation()}>
+          {r.sheet_url ? (
+            <>
+              <a href={r.sheet_url} target="_blank" rel="noreferrer" className="text-[12.5px] font-semibold text-primary-700 inline-flex items-center gap-1"><Download className="w-3.5 h-3.5" /> PDF</a>
+              <button onClick={() => generateSheet(r.id)} className="text-[12.5px] text-neutral-400 hover:text-neutral-600">Regenerate</button>
+            </>
+          ) : (
+            <button onClick={() => generateSheet(r.id)} className="btn-standard btn-compact">Generate</button>
+          )}
+        </div>
+      ) },
+    { key: 'candidates', label: 'Candidates', exportable: false, sortable: true, sortAccessor: (r) => (r.match_count ?? 0),
+      render: (r) => (
+        <div className="flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
+          {r.match_count > 0 && (<span className="badge-info text-[10px]" title="Recalculated candidate matches on file">{r.match_count} matched</span>)}
+          <button onClick={() => setMatchesFor(r)} className="btn-standard btn-compact"><Users className="w-3.5 h-3.5" /> Find</button>
+        </div>
+      ) },
+  ], [generateSheet]);
+
+  const ctl = useTableControls({ pageId: 'wizmatch-requirements', spec: REQ_FILTERS, columns, defaults: REQ_DEFAULTS });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = ctl.toQueryParams({ limit: REQ_PAGE_SIZE, offset: ctl.page * REQ_PAGE_SIZE });
+      const data = await apiFetch(`/api/wizmatch/requirements?${params}`);
+      setItems(data.items || []);
+      setTotal(data.total || 0);
+    } catch (e) { console.error(e); } finally { setLoading(false); }
+  }, [ctl.toQueryParams, ctl.page, reloadKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Deep link: /wizmatch/requirements?id=<uuid> opens that requirement's drawer
+  // directly (used by Global Search, Today, and the signal→requirement CTA).
+  const idParam = searchParams.get('id');
+  useEffect(() => {
+    if (!idParam) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiFetch(`/api/wizmatch/requirements/${idParam}`);
+        if (!cancelled) setSelected(r);
+      } catch { /* invalid/removed id — leave the list as-is */ }
+    })();
+    return () => { cancelled = true; };
+  }, [idParam]);
+
+  // Only drop the `id` param — must not wipe the filter/sort params the hook owns.
+  const closeDetail = () => {
+    setSelected(null);
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('id'); return next; }, { replace: true });
   };
+
+  // Server page: sort the current page's rows client-side (global ORDER BY would
+  // need backend support — a later refinement).
+  const rows = applySort(items, ctl.sort, columns);
+  const rangeStart = total === 0 ? 0 : ctl.page * REQ_PAGE_SIZE + 1;
+  const rangeEnd = Math.min((ctl.page + 1) * REQ_PAGE_SIZE, total);
+  const hasPrev = ctl.page > 0;
+  const hasNext = (ctl.page + 1) * REQ_PAGE_SIZE < total;
 
   return (
     <div className="p-6">
@@ -120,105 +217,39 @@ export default function WizmatchRequirementsPage() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap gap-2.5">
-        <input placeholder="Company…" value={filters.company} onChange={e => setFilter('company', e.target.value)} className="input w-[150px]" />
-        <input placeholder="Skill…" value={filters.skill} onChange={e => setFilter('skill', e.target.value)} className="input w-[130px]" />
-        <input type="number" placeholder="Min exp (yrs)" value={filters.min_experience} onChange={e => setFilter('min_experience', e.target.value)} className="input w-[130px]" />
-        <input placeholder="Location…" value={filters.location} onChange={e => setFilter('location', e.target.value)} className="input w-[130px]" />
-        <select value={filters.work_mode} onChange={e => setFilter('work_mode', e.target.value)} className="input w-auto">
-          <option value="">Any Work Mode</option>
-          <option value="onsite">Onsite</option><option value="hybrid">Hybrid</option><option value="remote">Remote</option>
-        </select>
-        <select value={filters.region} onChange={e => setFilter('region', e.target.value)} className="input w-auto">
-          <option value="">Any Region</option>
-          <option value="india">India</option><option value="us">US</option>
-        </select>
-        <select value={filters.employment_type} onChange={e => setFilter('employment_type', e.target.value)} className="input w-auto">
-          <option value="">Any Employment</option>
-          <option value="contract">Contract</option><option value="contract_c2c">Contract — C2C</option>
-          <option value="contract_w2">Contract — W2</option><option value="permanent">Permanent</option>
-        </select>
-        <select value={filters.priority} onChange={e => setFilter('priority', e.target.value)} className="input w-auto">
-          <option value="">Any Priority</option>
-          <option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option>
-        </select>
-        <select value={filters.status} onChange={e => setFilter('status', e.target.value)} className="input w-auto">
-          <option value="">Any Status</option>
-          <option value="draft">Draft</option><option value="sheet_ready">Sheet Ready</option>
-          <option value="shared">Shared</option><option value="closed">Closed</option>
-        </select>
-        {Object.values(filters).some(Boolean) && (
-          <button onClick={() => setFilters(EMPTY_FILTERS)} className="text-[12.5px] text-neutral-400 hover:text-neutral-600">Clear filters</button>
-        )}
-      </div>
+      <FilterBar
+        spec={REQ_FILTERS}
+        filters={ctl.filters}
+        setFilter={ctl.setFilter}
+        activeChips={ctl.activeChips}
+        clearFilter={ctl.clearFilter}
+        clearAll={ctl.clearAll}
+        columns={columns}
+        hiddenColumns={ctl.hiddenColumns}
+        toggleColumn={ctl.toggleColumn}
+        onExport={() => exportRowsToCsv(rows, ctl.visibleColumns, 'requirements.csv')}
+        presets={ctl.presets}
+        savePreset={ctl.savePreset}
+        applyPreset={ctl.applyPreset}
+        deletePreset={ctl.deletePreset}
+      />
 
-      <div className="card overflow-hidden">
-        <table className="table-fluent">
-          <thead>
-            <tr>
-              <th>Requirement</th>
-              <th>Client</th>
-              <th>Source person</th>
-              <th>Assigned team</th>
-              <th>Location</th>
-              <th className="text-center">Positions</th>
-              <th className="text-right">Budget</th>
-              <th>Region</th>
-              <th>Status</th>
-              <th className="text-right">Sheet</th>
-              <th className="text-right">Candidates</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? <tr><td colSpan="11" className="px-4 py-8 text-center text-neutral-400">Loading...</td></tr>
-            : items.length === 0 ? <tr><td colSpan="11" className="px-4 py-8 text-center text-neutral-400">No requirements match these filters.</td></tr>
-            : items.map(r => (
-              <tr key={r.id} onClick={() => setSelected(r)} className="cursor-pointer hover:bg-neutral-50">
-                <td>
-                  <div className="font-medium text-neutral-900">{r.title}</div>
-                  {r.required_skills?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">{r.required_skills.slice(0, 4).map((s, i) => <span key={i} className="badge-info text-[10px]">{s}</span>)}</div>
-                  )}
-                </td>
-                <td>
-                  <div className="font-medium text-neutral-900">{r.company_name || '—'}</div>
-                  <span className={`${TIER_BADGE[r.company_tier] || 'badge-muted'} text-[10px] mt-1 inline-flex`}>
-                    {r.company_tier ? `Tier ${r.company_tier}` : '—'}
-                  </span>
-                </td>
-                <td><div className="font-medium">{r.primary_source_name || <span className="text-warning-700">Needs attribution</span>}</div><div className="text-[11px] text-neutral-500">{r.primary_source_email || ''}</div></td>
-                <td>{(r.assignments || []).length ? (r.assignments || []).map(a => <div key={a.id} className="text-[11.5px]"><span className="font-medium">{a.name}</span> · {a.role.replace(/_/g, ' ')}</div>) : <span className="text-warning-700">Unassigned</span>}</td>
-                <td>{r.location || '—'}{r.work_mode ? ` · ${r.work_mode}` : ''}</td>
-                <td className="text-center">{r.positions || 1}</td>
-                <td className="text-right font-mono text-neutral-900">{fmtBudget(r)}</td>
-                <td><span className={REGION_BADGE[r.region] || 'badge-muted'}>{r.region || '—'}</span></td>
-                <td><span className="badge-info">{(r.stage || 'draft').replace(/_/g, ' ')}</span><div className="mt-1"><span className={STATUS_BADGE[r.status] || 'badge-muted'}>{r.status?.replace(/_/g, ' ')}</span></div></td>
-                <td className="text-right" onClick={e => e.stopPropagation()}>
-                  {r.sheet_url ? (
-                    <div className="flex gap-2 justify-end">
-                      <a href={r.sheet_url} target="_blank" rel="noreferrer" className="text-[12.5px] font-semibold text-primary-700 inline-flex items-center gap-1">
-                        <Download className="w-3.5 h-3.5" /> PDF
-                      </a>
-                      <button onClick={() => generateSheet(r.id)} className="text-[12.5px] text-neutral-400 hover:text-neutral-600">Regenerate</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => generateSheet(r.id)} className="btn-standard btn-compact">Generate</button>
-                  )}
-                </td>
-                <td className="text-right" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center justify-end gap-2">
-                    {r.match_count > 0 && (
-                      <span className="badge-info text-[10px]" title="Recalculated candidate matches on file">{r.match_count} matched</span>
-                    )}
-                    <button onClick={() => setMatchesFor(r)} className="btn-standard btn-compact">
-                      <Users className="w-3.5 h-3.5" /> Find
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <DataTable
+        columns={ctl.visibleColumns}
+        rows={rows}
+        rowKey="id"
+        onRowClick={setSelected}
+        loading={loading}
+        emptyText="No requirements match these filters."
+        sort={ctl.sort}
+        onSort={ctl.setSort}
+      />
+      <div className="flex items-center justify-between px-1 py-3">
+        <p className="text-[12.5px] text-neutral-500">Showing {rangeStart}–{rangeEnd} of {total} requirements</p>
+        <div className="flex gap-2">
+          <button disabled={!hasPrev} onClick={() => ctl.setPage(Math.max(0, ctl.page - 1))} className={`text-[12.5px] font-semibold px-3.5 py-1.5 border border-neutral-200 rounded-md ${hasPrev ? 'bg-neutral-100 text-neutral-700' : 'bg-neutral-100 text-neutral-500 opacity-60'}`}>← Prev</button>
+          <button disabled={!hasNext} onClick={() => ctl.setPage(ctl.page + 1)} className={`text-[12.5px] font-semibold px-3.5 py-1.5 border border-neutral-200 rounded-md ${hasNext ? 'bg-neutral-100 text-neutral-700' : 'bg-neutral-100 text-neutral-500 opacity-60'}`}>Next →</button>
+        </div>
       </div>
 
       {showDrawer && (
