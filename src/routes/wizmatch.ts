@@ -43,6 +43,9 @@ import {
   WIZMATCH_PHYSICAL_ADDRESS,
   WIZMATCH_UNSUBSCRIBE_HMAC_SECRET,
   WIZMATCH_MEETING_URL,
+  WIZMATCH_INDIA_ONLY,
+  INDIA_LOCATION_MARKERS,
+  US_LOCATION_MARKERS,
 } from '../config/constants';
 import multer from 'multer';
 import { parseRequirement, generateRequirementSheet } from '../services/wizmatchRequirementSheet';
@@ -4022,6 +4025,25 @@ router.get('/signals', async (req: Request, res: Response) => {
   if (req.query.company_id) {
     conditions.push(`s.company_id = $${paramIdx++}`);
     params.push(req.query.company_id);
+  }
+
+  // India-only view. Signals have no region column, so we filter on the
+  // free-text location: "confident-US" = matches a US marker AND not an India
+  // marker. Default (no region param) applies india-only when the tenant flag is
+  // on; region=india forces it; region=all bypasses; region=us inverts it. This
+  // hides existing US rows without deleting them (they stay queryable via `all`).
+  const regionParam = String(req.query.region || '').toLowerCase();
+  const usPatterns = US_LOCATION_MARKERS.map((m) => `%${m}%`);
+  const indiaPatterns = INDIA_LOCATION_MARKERS.map((m) => `%${m}%`);
+  const applyIndiaFilter = regionParam === 'india' || (regionParam === '' && WIZMATCH_INDIA_ONLY);
+  if (applyIndiaFilter) {
+    conditions.push(`NOT (LOWER(COALESCE(s.location,'')) LIKE ANY($${paramIdx}::text[]) AND LOWER(COALESCE(s.location,'')) NOT LIKE ANY($${paramIdx + 1}::text[]))`);
+    params.push(usPatterns, indiaPatterns);
+    paramIdx += 2;
+  } else if (regionParam === 'us') {
+    conditions.push(`(LOWER(COALESCE(s.location,'')) LIKE ANY($${paramIdx}::text[]) AND LOWER(COALESCE(s.location,'')) NOT LIKE ANY($${paramIdx + 1}::text[]))`);
+    params.push(usPatterns, indiaPatterns);
+    paramIdx += 2;
   }
 
   const whereClause = conditions.join(' AND ');

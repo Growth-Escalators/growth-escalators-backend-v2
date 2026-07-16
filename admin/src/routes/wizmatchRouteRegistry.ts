@@ -144,9 +144,14 @@ export const WIZMATCH_ROUTES: WizmatchRouteDefinition[] = [
     badge: 'inbox-unread',
   },
   {
+    // Out of Wizmatch nav + search on purpose: /wizmatch/outreach renders the
+    // Growth tenant's Saleshandy dashboard, which is unrelated to Wizmatch's own
+    // (Purelymail) sending and misleads users hunting for "where do I send".
+    // Kept URL-routable for the Growth tenant; a real Wizmatch outreach surface
+    // is a separate future effort. See docs/wizmatch flow audit (2026-07-16).
     id: 'more-outreach', label: 'Outreach', path: '/wizmatch/outreach', icon: Target,
-    group: 'more.communication', moreSection: 'Communication', permission: 'isAdminTier',
-    breadcrumb: { label: 'Outreach' }, legacyAliases: [], searchVisible: true,
+    permission: 'isAdminTier',
+    breadcrumb: { label: 'Outreach' }, legacyAliases: [], searchVisible: false,
   },
   {
     id: 'more-templates-email', label: 'Email Templates', path: '/wizmatch/emails', icon: Mail,

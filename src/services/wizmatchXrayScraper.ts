@@ -12,6 +12,7 @@
 import { pool } from '../db/index';
 import { db } from '../db/index';
 import { wizmatchCandidates } from '../db/schema';
+import { WIZMATCH_INDIA_ONLY } from '../config/constants';
 import { findOrCreateContact } from './contactService';
 import logger from '../utils/logger';
 import { createSourceRun, finishSourceRun, getWizmatchSourcingConfig } from './wizmatchSourcing';
@@ -42,10 +43,11 @@ interface XrayResult {
 
 // ── Search templates ─────────────────────────────────────────────────────────
 
-const XRAY_QUERIES: XrayQuery[] = [
+// India-only seed queries — all target Indian metros (no US cities).
+export const INDIA_XRAY_QUERIES: XrayQuery[] = [
   {
-    q: 'site:linkedin.com/in "java developer" "dallas" "open to work"',
-    label: 'Dallas Java',
+    q: 'site:linkedin.com/in "java developer" "bengaluru" "open to work"',
+    label: 'Bengaluru Java',
     skills: ['java', 'spring', 'backend'],
   },
   {
@@ -54,18 +56,18 @@ const XRAY_QUERIES: XrayQuery[] = [
     skills: ['python', 'django', 'backend'],
   },
   {
-    q: 'site:linkedin.com/in "react developer" "remote" "open to work"',
-    label: 'Remote React',
+    q: 'site:linkedin.com/in "react developer" "india" "open to work"',
+    label: 'India React',
     skills: ['react', 'javascript', 'frontend'],
   },
   {
-    q: 'site:linkedin.com/in "devops engineer" "austin" "open to work"',
-    label: 'Austin DevOps',
+    q: 'site:linkedin.com/in "devops engineer" "gurgaon" "open to work"',
+    label: 'Gurgaon DevOps',
     skills: ['devops', 'aws', 'docker', 'kubernetes'],
   },
   {
-    q: 'site:linkedin.com/in "data engineer" "seattle" "open to work"',
-    label: 'Seattle Data Eng',
+    q: 'site:linkedin.com/in "data engineer" "hyderabad" "open to work"',
+    label: 'Hyderabad Data Eng',
     skills: ['python', 'spark', 'airflow', 'sql'],
   },
   {
@@ -84,16 +86,29 @@ const XRAY_QUERIES: XrayQuery[] = [
     skills: ['salesforce', 'apex', 'lightning'],
   },
   {
-    q: 'site:linkedin.com/in "AWS engineer" "denver" "open to work"',
-    label: 'Denver AWS',
+    q: 'site:linkedin.com/in "AWS engineer" "noida" "open to work"',
+    label: 'Noida AWS',
     skills: ['aws', 'devops', 'terraform'],
   },
   {
-    q: 'site:linkedin.com/in "mobile developer" "san francisco" "open to work"',
-    label: 'SF Mobile',
+    q: 'site:linkedin.com/in "mobile developer" "mumbai" "open to work"',
+    label: 'Mumbai Mobile',
     skills: ['ios', 'android', 'swift', 'kotlin'],
   },
 ];
+
+// Legacy US+India seed set — used only when WIZMATCH_INDIA_ONLY is disabled.
+export const GLOBAL_XRAY_QUERIES: XrayQuery[] = [
+  { q: 'site:linkedin.com/in "java developer" "dallas" "open to work"', label: 'Dallas Java', skills: ['java', 'spring', 'backend'] },
+  { q: 'site:linkedin.com/in "react developer" "remote" "open to work"', label: 'Remote React', skills: ['react', 'javascript', 'frontend'] },
+  { q: 'site:linkedin.com/in "devops engineer" "austin" "open to work"', label: 'Austin DevOps', skills: ['devops', 'aws', 'docker', 'kubernetes'] },
+  { q: 'site:linkedin.com/in "data engineer" "seattle" "open to work"', label: 'Seattle Data Eng', skills: ['python', 'spark', 'airflow', 'sql'] },
+  { q: 'site:linkedin.com/in "AWS engineer" "denver" "open to work"', label: 'Denver AWS', skills: ['aws', 'devops', 'terraform'] },
+  { q: 'site:linkedin.com/in "mobile developer" "san francisco" "open to work"', label: 'SF Mobile', skills: ['ios', 'android', 'swift', 'kotlin'] },
+  ...INDIA_XRAY_QUERIES,
+];
+
+const XRAY_QUERIES: XrayQuery[] = WIZMATCH_INDIA_ONLY ? INDIA_XRAY_QUERIES : GLOBAL_XRAY_QUERIES;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

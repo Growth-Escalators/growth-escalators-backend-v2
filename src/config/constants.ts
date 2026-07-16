@@ -52,3 +52,61 @@ export const WIZMATCH_BRAND_EMAIL = process.env.WIZMATCH_BRAND_EMAIL ?? 'team@ge
 export const WIZMATCH_BRAND_WEBSITE = process.env.WIZMATCH_BRAND_WEBSITE ?? 'getwizmatch.com';
 export const WIZMATCH_BRAND_PHONE = process.env.WIZMATCH_BRAND_PHONE ?? '';
 export const WIZMATCH_BRAND_ACCENT = process.env.WIZMATCH_BRAND_ACCENT ?? '#3b82f6';
+
+// ── Region / India-only sourcing ────────────────────────────────────────────
+// Wizmatch sources IN-market hiring only. When WIZMATCH_INDIA_ONLY is true
+// (default), ingestion (ATS poller + X-Ray) drops confident-US jobs and the
+// Signals list defaults to an India-only view. Set WIZMATCH_INDIA_ONLY=false to
+// restore the earlier US+India behaviour. No infra change is required to deploy.
+export const WIZMATCH_INDIA_ONLY = process.env.WIZMATCH_INDIA_ONLY !== 'false';
+
+// India city/region markers. Kept in sync with detectRegion() in
+// src/services/wizmatchScoring.ts — a location matching any of these is India.
+export const INDIA_LOCATION_MARKERS: readonly string[] = [
+  'india', 'bharat', 'bangalore', 'bengaluru', 'hyderabad', 'pune', 'chennai',
+  'mumbai', 'delhi', 'new delhi', 'gurgaon', 'gurugram', 'noida', 'kolkata',
+  'ahmedabad', 'kochi', 'cochin', 'coimbatore', 'indore', 'chandigarh', 'jaipur',
+  'trivandrum', 'thiruvananthapuram', 'nagpur', 'visakhapatnam', 'vizag',
+  'mysuru', 'mysore', 'karnataka', 'telangana', 'maharashtra', 'tamil nadu', 'ncr',
+];
+
+// Confident-US markers (well-known US-only city/state/country tokens). Used ONLY
+// to EXCLUDE clearly-US rows — deliberately omits ambiguous 2-letter state codes
+// to avoid false positives. Blank/remote/ambiguous is never treated as US.
+export const US_LOCATION_MARKERS: readonly string[] = [
+  'united states', 'u.s.a', 'usa', 'u.s.', 'america',
+  'new york', 'nyc', 'san francisco', 'bay area', 'silicon valley', 'seattle',
+  'austin', 'dallas', 'houston', 'denver', 'boston', 'chicago', 'atlanta',
+  'los angeles', 'san jose', 'sunnyvale', 'mountain view', 'palo alto',
+  'washington', 'phoenix', 'miami', 'san diego', 'portland', 'philadelphia',
+  'texas', 'california', 'florida', 'illinois', 'massachusetts',
+  'remote - us', 'us remote', 'remote (us', 'united states of america',
+];
+
+/** True when the free-text location matches an India city/region marker. */
+export function isIndiaLocation(location?: string | null): boolean {
+  if (!location) return false;
+  const l = location.toLowerCase();
+  return INDIA_LOCATION_MARKERS.some((m) => l.includes(m));
+}
+
+/**
+ * True only when the location is *confidently* US — matches a US marker and does
+ * NOT match an India marker. Blank / remote / ambiguous → false (never excluded
+ * by the India-only rules). India markers always win.
+ */
+export function isConfidentUsLocation(location?: string | null): boolean {
+  if (!location) return false;
+  const l = location.toLowerCase();
+  if (isIndiaLocation(l)) return false;
+  return US_LOCATION_MARKERS.some((m) => l.includes(m));
+}
+
+/**
+ * India-only ingestion rule: keep India + ambiguous/remote/blank, drop only
+ * confident-US. When WIZMATCH_INDIA_ONLY is off, everything passes.
+ */
+export function passesIndiaOnlyIngestion(location?: string | null): boolean {
+  if (!WIZMATCH_INDIA_ONLY) return true;
+  return !isConfidentUsLocation(location);
+}
