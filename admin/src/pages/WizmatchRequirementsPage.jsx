@@ -16,8 +16,10 @@ const TIER_BADGE = { A: 'badge-success', B: 'badge-warning', C: 'badge-muted', R
 const MATCH_PRIORITY_BADGE = { hot: 'badge-success', warm: 'badge-info', watch: 'badge-warning', blocked: 'badge-danger' };
 
 const EMPTY_FILTERS = {
+  // India-only sourcing: default the requirements view to India (existing US
+  // requirements remain visible via the Region filter → "US"/"Any").
   company: '', skill: '', min_experience: '', location: '',
-  work_mode: '', region: '', employment_type: '', priority: '', status: '',
+  work_mode: '', region: 'india', employment_type: '', priority: '', status: '',
 };
 
 function fmtBudget(r) {

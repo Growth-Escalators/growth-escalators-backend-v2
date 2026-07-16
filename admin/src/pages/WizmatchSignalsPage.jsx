@@ -22,7 +22,7 @@ export default function WizmatchSignalsPage() {
   const [signals, setSignals] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ status: '', min_score: '', source: '' });
+  const [filters, setFilters] = useState({ status: '', min_score: '', source: '', region: 'india' });
   const [page, setPage] = useState(0);
   const [selectedSignal, setSelectedSignal] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -41,6 +41,7 @@ export default function WizmatchSignalsPage() {
       if (filters.status) params.set('status', filters.status);
       if (filters.min_score) params.set('min_score', filters.min_score);
       if (filters.source) params.set('source', filters.source);
+      params.set('region', filters.region || 'india');
       const data = await apiFetch(`/api/wizmatch/signals?${params}`);
       setSignals(data.items || []);
       setTotal(data.total || 0);
@@ -175,6 +176,15 @@ export default function WizmatchSignalsPage() {
           onChange={(e) => { setFilters({...filters, source: e.target.value}); setPage(0); }}
           className="input w-40"
         />
+        <select
+          value={filters.region}
+          onChange={(e) => { setFilters({...filters, region: e.target.value}); setPage(0); }}
+          className="input w-auto"
+          title="Wizmatch sources India hiring; existing US signals are hidden here, not deleted."
+        >
+          <option value="india">India only</option>
+          <option value="all">All regions</option>
+        </select>
         <button onClick={loadSignals} className="btn-standard btn-compact">
           <RefreshCw className="w-3.5 h-3.5" /> Refresh
         </button>

@@ -20,6 +20,7 @@ export default defineConfig({
     'wizmatch-reports-funnel.spec.ts',
     'wizmatch-delete-detail-local.spec.ts',
     'wizmatch-matching-ux-local.spec.ts',
+    'wizmatch-india-only-local.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,

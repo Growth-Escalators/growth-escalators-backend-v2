@@ -15,6 +15,7 @@
 
 import { pool } from '../db/index';
 import logger from '../utils/logger';
+import { WIZMATCH_INDIA_ONLY, passesIndiaOnlyIngestion } from '../config/constants';
 import { isWizmatchRelevantRole } from './wizmatchRoleRelevance';
 import { createSourceRun, finishSourceRun, ingestWizmatchSignals } from './wizmatchSourcing';
 
@@ -321,6 +322,15 @@ export async function pollAtsBoards(options: { trigger?: 'manual' | 'scheduled';
         description: job.raw_text,
         skills: job.keywords,
       }));
+
+      // India-only sourcing: a global board (Stripe/Airbnb/etc.) dumps worldwide
+      // roles with no country param, so drop confident-US postings here. India +
+      // remote/ambiguous/blank are kept. No-op when WIZMATCH_INDIA_ONLY is off.
+      const beforeGeo = jobs.length;
+      jobs = jobs.filter((job) => passesIndiaOnlyIngestion(job.location));
+      if (WIZMATCH_INDIA_ONLY && jobs.length < beforeGeo) {
+        logger.info(`[wizmatch-ats] ${company.name}: dropped ${beforeGeo - jobs.length} non-India role(s) (India-only)`);
+      }
 
       result.found = jobs.length;
       totalFound += jobs.length;
