@@ -6,6 +6,26 @@ Format: `## YYYY-MM-DD — <title> — <agent>` then a few bullets (what changed
 
 ---
 
+## 2026-07-16 — Free POC discovery ENABLED in production (env flag) — Claude — LIVE PRODUCTION ENV CHANGE
+
+- Set `WIZMATCH_POC_DISCOVERY_ENABLED=true` on the production `web` service (project `GE-Backend-Server`
+  `eef927aa…`, environment `production` `81b087de…`, service `web` `0ee1b243…`) via Railway
+  `set_variables`. Non-secret boolean; no secret value was read or written. `SEARCHAPI_API_KEY` was
+  already present (validated in prior handoffs — deliberately NOT re-read to avoid leaking it).
+- `set_variables` alone did **not** restart the running process (no boot in ~6 min; Node reads env at
+  start), so the flag was applied by a redeploy: empty commit `7223b49` pushed to `main` → Railway
+  deploy `2c895610` SUCCESS (prior `6830a7b4` REMOVED). Reusable lesson: a Railway var change here does
+  not auto-restart `web`; trigger a redeploy (push / dashboard Redeploy) to apply it.
+- Effect: the **free** POC search now runs in prod — internal CRM → website scrape → SearchAPI (1
+  credit) only within the 5/day + 80/mo caps + 30-day per-company cooldown + ≤5 results, preview-first,
+  channels never guessed. **Apollo/Snov paid discovery stays OFF** (`WIZMATCH_PAID_DISCOVERY_ENABLED`
+  untouched + cost guard).
+- Verify: deploy SUCCESS, zero 5xx, `GET /health` 200, CRM SPA 200. End-to-end (read-only, no spend):
+  Job Leads → open a signal → "Find POC ▸ preview" now shows `searchApiConfigured` true + the credit
+  counter + an enabled "Run free search".
+
+---
+
 ## 2026-07-16 — Cost-safe POC search: read-only preview + role targeting + credit banner — Claude — LIVE PRODUCTION
 
 **What went live** (`f07ea17..695a139` fast-forward onto `main`; Railway deploy `35c38b14` SUCCESS)
