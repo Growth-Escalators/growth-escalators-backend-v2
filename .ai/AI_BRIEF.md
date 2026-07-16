@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate with: npm run ai:brief -->
 
-_Generated: 2026-07-16T13:17:40.590Z_
+_Generated: 2026-07-16T13:39:50.814Z_
 
 This is a machine-generated snapshot of local repo state. It exists so any AI agent or fresh
 chat can rebuild context from the repo alone. For durable guidance read `AGENTS.md`,
@@ -12,7 +12,7 @@ chat can rebuild context from the repo alone. For durable guidance read `AGENTS.
 
 - **Repo**: Growth-Escalators/Growth-Escalators-CRM
 - **Branch**: `feat/wizmatch-search-preview`
-- **Last commit**: 695a139 feat(wizmatch): cost-safe POC search — read-only preview + role targeting + credit banner (3 hours ago)
+- **Last commit**: 7223b49 chore(wizmatch): redeploy to apply WIZMATCH_POC_DISCOVERY_ENABLED=true (free POC search) (4 minutes ago)
 - **Uncommitted changes**: 2 file(s)
 
 ## Current task
@@ -32,9 +32,14 @@ cooldown + ≤5 cap; channels never guessed); Apollo/Snov stay OFF behind their 
 migration, no guardrail file, no new env var. **Verified:** tsc, 455 Vitest (new
 `wizmatchPocSearchPreview.test.ts` — role-set query builder + preview cost logic, DB-only/no-provider),
 admin build, 97 Playwright (sourcing spec updated to preview-first). **Live:** deploy SUCCESS, zero
-5xx, `/health` 200, SPA 200, the new preview route 401 (intact). **Enablement (gated, separate
-approval):** the preview is read-only and works regardless of flags; actually *running* the free
-search in prod needs `WIZMATCH_POC_DISCOVERY_ENABLED=true` + `SEARCHAPI_API_KEY` (Railway env change).
+5xx, `/health` 200, SPA 200, the new preview route 401 (intact). **Enablement — NOW DONE:**
+`WIZMATCH_POC_DISCOVERY_ENABLED=true` was set on the production `web` service (env
+`81b087de`, Railway) and applied via a redeploy (empty commit `7223b49`, deploy `2c895610` SUCCESS —
+`set_variables` alone did not restart the process, so a push was needed to reboot with the flag).
+`SEARCHAPI_API_KEY` was already present (validated in prior handoffs; not re-read, to avoid leaking).
+So the free POC search now RUNS in prod (capped 5/day + 80/mo + 30-day cooldown + ≤5 results,
+preview-first, channels never guessed). **Apollo/Snov paid discovery stays OFF** behind
+`WIZMATCH_PAID_DISCOVERY_ENABLED` + its cost guard — untouched.
 Client-side cost-safety (TheirStack free preview + SearchAPI allowance) is on the same Signals
 sourcing cards; Companies paid `discovery-preview` + Client-Discovery seeding are unchanged (paid
 stays off / seeding is credit-free).
@@ -44,6 +49,8 @@ stays off / seeding is credit-free).
 ## Recent commits
 
 ```
+7223b49 chore(wizmatch): redeploy to apply WIZMATCH_POC_DISCOVERY_ENABLED=true (free POC search)
+3522799 docs(ai): record shipped cost-safe POC search preview + role targeting + live verify
 695a139 feat(wizmatch): cost-safe POC search — read-only preview + role targeting + credit banner
 f07ea17 docs(ai): record shipped Reports From/To staffing-analytics scoping + live verify
 9767469 feat(wizmatch): honor the Reports From/To range on staffing-analytics metrics
@@ -52,8 +59,6 @@ d7906e0 feat(wizmatch): global server-side sort + full-filtered CSV on the serve
 cbfdde7 test+fix(wizmatch): green the filter rollout (a11y, spec locators, backend test)
 53db7d7 feat(wizmatch): wire Placements, Contact Intelligence, Reports to shared filters
 eb456b5 feat(wizmatch): wire Hiring Contacts, Talent Matching, Delivery to shared filters
-bcf6eca feat(wizmatch): wire Requirements + Companies to the shared filter system
-0ecdf81 feat(wizmatch): wire Job Leads/Signals to the shared filter system
 ```
 
 ## npm scripts
