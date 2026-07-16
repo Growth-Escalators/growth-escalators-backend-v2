@@ -1,11 +1,49 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Building2, Search, X, UserPlus, Trash2, Radar } from 'lucide-react';
+import { Building2, X, UserPlus, Trash2, Radar } from 'lucide-react';
 import { apiFetch } from '../lib/api.js';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import EmptyState from '../components/wizmatch/EmptyState.jsx';
 import ErrorRetry from '../components/wizmatch/ErrorRetry.jsx';
 import StatusBadge from '../components/wizmatch/StatusBadge.jsx';
 import { useToast } from '../components/wizmatch/Toast.jsx';
+import DataTable from '../components/ui/DataTable.jsx';
+import FilterBar from '../components/wizmatch/filters/FilterBar.jsx';
+import { useTableControls } from '../components/wizmatch/filters/useTableControls.js';
+import { exportRowsToCsv } from '../components/wizmatch/filters/exportCsv.js';
+
+const TIER_BADGE = { A: 'badge-success', B: 'badge-warning', C: 'badge-muted', Reject: 'badge-danger' };
+const REGION_BADGE = { india: 'badge-warning', us: 'badge-info' };
+
+// Declarative filter spec + columns for the Companies list. This page is filtered
+// entirely client-side: listCompanies returns up to 500 rows (with CI tier/region
+// + prime/ats/employee/counts) in one call, since Hiring Contacts fans out over
+// the full list, so it isn't server-paginated.
+const COMPANY_FILTERS = [
+  { key: 'q', label: 'Name / domain', type: 'search', placeholder: 'Search name or domain…', fields: ['name', 'domain'] },
+  { key: 'industry', label: 'Industry', type: 'search', placeholder: 'Industry…', fields: ['industry'] },
+  { key: 'country', label: 'Country', type: 'search', placeholder: 'Country…', fields: ['country'] },
+  { key: 'ats_type', label: 'ATS', type: 'search', placeholder: 'ATS…', fields: ['ats_type'] },
+  { key: 'tier', label: 'Tier', type: 'multiselect', options: ['A', 'B', 'C', 'Reject'].map((v) => ({ value: v, label: v })) },
+  { key: 'region', label: 'Region', type: 'select', options: [{ value: 'india', label: 'India' }, { value: 'us', label: 'US' }], placeholder: 'Any region' },
+  { key: 'employees', label: 'Employees', type: 'numberRange', accessor: (r) => r.employee_count },
+  { key: 'is_prime', label: 'Prime only', type: 'toggle', predicate: (r) => r.is_prime === true },
+  { key: 'has_open_reqs', label: 'Has open reqs', type: 'toggle', predicate: (r) => (r.open_requirement_count || 0) > 0 },
+  { key: 'has_contacts', label: 'Has contacts', type: 'toggle', predicate: (r) => (r.contact_count || 0) > 0 },
+];
+
+const COMPANY_COLUMNS = [
+  { key: 'name', label: 'Company', sortable: true, render: (c) => <span className="font-medium text-neutral-900">{c.name}</span> },
+  { key: 'domain', label: 'Domain', sortable: true, render: (c) => <span className="text-neutral-500">{c.domain || '—'}</span> },
+  { key: 'industry', label: 'Industry', sortable: true, render: (c) => <span className="text-neutral-500">{c.industry || '—'}</span> },
+  { key: 'country', label: 'Country', sortable: true, render: (c) => <span className="text-neutral-500">{c.country || '—'}</span> },
+  { key: 'tier', label: 'Tier', sortable: true, render: (c) => (c.tier ? <span className={TIER_BADGE[c.tier] || 'badge-muted'}>Tier {c.tier}</span> : <span className="text-neutral-400">—</span>) },
+  { key: 'region', label: 'Region', sortable: true, render: (c) => (c.region ? <span className={REGION_BADGE[c.region] || 'badge-muted'}>{c.region}</span> : <span className="text-neutral-400">—</span>) },
+  { key: 'employee_count', label: 'Employees', sortable: true, defaultHidden: true, render: (c) => <span className="tabular-nums">{c.employee_count ?? '—'}</span> },
+  { key: 'ats_type', label: 'ATS', sortable: true, defaultHidden: true, render: (c) => <span className="text-neutral-500">{c.ats_type || '—'}</span> },
+  { key: 'is_prime', label: 'Prime', sortable: true, defaultHidden: true, exportValue: (c) => (c.is_prime ? 'prime' : ''), render: (c) => (c.is_prime ? <span className="badge-info text-[10px]">Prime</span> : <span className="text-neutral-400">—</span>) },
+  { key: 'open_requirement_count', label: 'Open reqs', sortable: true, render: (c) => (c.open_requirement_count > 0 ? <span className="badge-info">{c.open_requirement_count}</span> : <span className="text-neutral-500">0</span>) },
+  { key: 'contact_count', label: 'Contacts', sortable: true, render: (c) => (c.contact_count > 0 ? <span className="badge-success">{c.contact_count}</span> : <span className="text-neutral-500">0</span>) },
+];
 
 // Mirrors COMPANY_CONTACT_ROLES in src/services/wizmatchStaffingDomain.ts —
 // kept in sync by hand like OPERATING_STAGES in WizmatchRequirementsPage.jsx.
@@ -27,28 +65,27 @@ export default function WizmatchCompaniesPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState(null);
 
+  const ctl = useTableControls({ pageId: 'wizmatch-companies', spec: COMPANY_FILTERS, columns: COMPANY_COLUMNS });
+
+  // One capped load; all filtering/sorting happens client-side over these rows.
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (search.trim()) params.set('search', search.trim());
-      const data = await apiFetch(`/api/wizmatch/staffing/companies?${params}`);
+      const data = await apiFetch('/api/wizmatch/staffing/companies');
       setItems(data.items || []);
     } catch (e) {
       setError(e.message || 'Failed to load companies');
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, []);
 
-  useEffect(() => {
-    const t = setTimeout(load, 250);
-    return () => clearTimeout(t);
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
+
+  const rows = ctl.applyClient(items);
 
   return (
     <div className="p-6">
@@ -56,75 +93,45 @@ export default function WizmatchCompaniesPage() {
         <div className="flex items-center gap-2.5">
           <h1 className="text-[20px] font-bold text-neutral-900 tracking-[-0.01em]">Companies</h1>
           <span className="text-[12.5px] font-semibold text-primary-700 bg-primary-500/10 border border-primary-500/20 px-2.5 py-0.5 rounded-full">
-            {items.length} companies
+            {rows.length}{rows.length !== items.length ? ` of ${items.length}` : ''} companies
           </span>
         </div>
       </div>
       <p className="text-[12.5px] text-neutral-500 mt-1 mb-5">
-        Client companies in the staffing pipeline — hiring contacts, open requirements and delivery activity.
+        Client companies in the staffing pipeline — hiring contacts, open requirements and delivery activity. Filters and sort are shareable via the URL and savable as presets.
       </p>
-
-      <div className="mb-4 flex flex-wrap gap-2.5">
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            placeholder="Search name or domain…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="input w-[260px] pl-8"
-          />
-        </div>
-        {search && (
-          <button onClick={() => setSearch('')} className="text-[12.5px] text-neutral-500 hover:text-neutral-600">Clear</button>
-        )}
-      </div>
 
       {error ? (
         <ErrorRetry message={error} onRetry={load} retrying={loading} />
-      ) : loading && items.length === 0 ? (
-        <div className="card p-8 text-center text-neutral-500">Loading companies…</div>
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon={Building2}
-          title={search ? 'No companies match this search' : 'No companies yet'}
-          description={search ? 'Try a different name or domain.' : 'Companies appear here once they enter the staffing pipeline.'}
-          variant={search ? 'filtered-empty' : 'true-empty'}
-        />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="table-fluent">
-            <thead>
-              <tr>
-                <th>Company</th>
-                <th>Domain</th>
-                <th>Industry</th>
-                <th>Country</th>
-                <th className="text-right">Open requirements</th>
-                <th className="text-right">Hiring contacts</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(c => (
-                <tr key={c.id} onClick={() => setSelectedId(c.id)} className="cursor-pointer hover:bg-neutral-50">
-                  <td className="font-medium text-neutral-900">{c.name}</td>
-                  <td className="text-neutral-500">{c.domain || '—'}</td>
-                  <td className="text-neutral-500">{c.industry || '—'}</td>
-                  <td className="text-neutral-500">{c.country || '—'}</td>
-                  <td className="text-right">
-                    {c.open_requirement_count > 0
-                      ? <span className="badge-info">{c.open_requirement_count}</span>
-                      : <span className="text-neutral-500">0</span>}
-                  </td>
-                  <td className="text-right">
-                    {c.contact_count > 0
-                      ? <span className="badge-success">{c.contact_count}</span>
-                      : <span className="text-neutral-500">0</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <FilterBar
+            spec={COMPANY_FILTERS}
+            filters={ctl.filters}
+            setFilter={ctl.setFilter}
+            activeChips={ctl.activeChips}
+            clearFilter={ctl.clearFilter}
+            clearAll={ctl.clearAll}
+            columns={COMPANY_COLUMNS}
+            hiddenColumns={ctl.hiddenColumns}
+            toggleColumn={ctl.toggleColumn}
+            onExport={() => exportRowsToCsv(rows, ctl.visibleColumns, 'companies.csv')}
+            presets={ctl.presets}
+            savePreset={ctl.savePreset}
+            applyPreset={ctl.applyPreset}
+            deletePreset={ctl.deletePreset}
+          />
+          <DataTable
+            columns={ctl.visibleColumns}
+            rows={rows}
+            rowKey="id"
+            onRowClick={(c) => setSelectedId(c.id)}
+            loading={loading}
+            emptyText={items.length === 0 ? 'No companies yet — they appear once they enter the staffing pipeline.' : 'No companies match these filters.'}
+            sort={ctl.sort}
+            onSort={ctl.setSort}
+          />
+        </>
       )}
 
       {selectedId && (

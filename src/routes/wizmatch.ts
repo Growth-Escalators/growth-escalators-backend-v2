@@ -5709,6 +5709,16 @@ router.get('/requirements', async (req: Request, res: Response) => {
       params.push(minExperience);
     }
   }
+  // Symmetric upper bound so the UI experience range isn't half-dead: keep
+  // requirements whose ask starts at/below the cap (window overlaps [min,max]).
+  const maxExperienceRaw = req.query.experience_max;
+  if (maxExperienceRaw !== undefined && maxExperienceRaw !== '') {
+    const maxExperience = Number(maxExperienceRaw);
+    if (Number.isFinite(maxExperience)) {
+      conditions.push(`COALESCE(r.min_experience, r.max_experience) <= $${paramIdx++}`);
+      params.push(maxExperience);
+    }
+  }
 
   const whereClause = conditions.join(' AND ');
   const dataResult = await pool.query(
