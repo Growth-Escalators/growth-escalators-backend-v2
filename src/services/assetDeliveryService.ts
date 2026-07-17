@@ -4,6 +4,7 @@ import { sendWhatsAppMessage } from './growthOSSetup';
 import { sendSlackDM } from './slackService';
 import { SLACK_JATIN } from '../config/constants';
 import { getFunnelConfig, renderTemplate, type FunnelConfig } from './funnelConfigService';
+import { automatedEmailsEnabled } from './emailService';
 
 // ---------------------------------------------------------------------------
 // Legacy asset URLs (fallback when no funnel config exists)
@@ -30,6 +31,15 @@ export async function deliverPurchaseAssets(params: {
   funnelSlug?: string;
 }): Promise<void> {
   const { contactId, firstName, phone, email, bump1, bump2, segment, funnelSlug } = params;
+
+  // HARD KILL-SWITCH: purchase-asset delivery (WhatsApp + email) is disabled
+  // unless PURCHASE_DELIVERY_ENABLED === 'true'. Default off after the mass-send
+  // incident — turn on deliberately once the mislabeled slo_purchase backlog is
+  // cleaned up. Applies to EVERY caller (cron or otherwise), not just one path.
+  if (process.env.PURCHASE_DELIVERY_ENABLED !== 'true') {
+    logger.info(`[asset-delivery] skipped for ${contactId} — PURCHASE_DELIVERY_ENABLED is off (hard-disabled)`);
+    return;
+  }
 
   // The pipeline-placement cron (worker.ts) re-selects any slo_purchase
   // event whose contact hasn't landed in pipeline_contacts yet, and calls
@@ -207,6 +217,11 @@ export async function deliverPurchaseAssets(params: {
 // ---------------------------------------------------------------------------
 export async function checkUnbookedAuditCalls(): Promise<void> {
   try {
+    // Automated follow-up to contacts — gate on the master kill-switch.
+    if (!automatedEmailsEnabled()) {
+      logger.info('[asset-delivery] audit follow-up skipped — AUTOMATED_EMAILS_ENABLED is off');
+      return;
+    }
     const result = await pool.query(`
       SELECT c.id, c.first_name, c.last_name,
              (SELECT channel_value FROM contact_channels WHERE contact_id = c.id AND channel_type = 'whatsapp' LIMIT 1) AS phone

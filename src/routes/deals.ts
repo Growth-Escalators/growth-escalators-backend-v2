@@ -224,15 +224,21 @@ router.patch('/:id', async (req, res) => {
             );
             const tpl = templateRes.rows[0];
             if (contactRow?.email && tpl) {
-              const { sendTransactionalEmail } = await import('../services/emailService');
-              const firstName = contactRow.first_name || 'there';
-              const htmlContent = (tpl.body || '').replace(/\{\{firstName\}\}/g, firstName);
-              await sendTransactionalEmail(contactRow.email, firstName, tpl.subject, htmlContent, htmlContent.replace(/<[^>]+>/g, ''));
-              await pool.query(
-                `INSERT INTO deal_activities (tenant_id, deal_id, contact_id, activity_type, note, created_by)
-                 VALUES ($1, $2, $3, 'automation_email', $4, 'automation')`,
-                [tenantId, id, existing[0].contactId, `Auto-email sent: ${tpl.subject}`]
-              );
+              const { sendTransactionalEmail, automatedEmailsEnabled } = await import('../services/emailService');
+              if (!automatedEmailsEnabled()) {
+                // Deal stage-change auto-email is an automated send to a contact —
+                // blocked unless the master kill-switch is on.
+                logger.warn('[deals] stage-automation email suppressed — AUTOMATED_EMAILS_ENABLED is off');
+              } else {
+                const firstName = contactRow.first_name || 'there';
+                const htmlContent = (tpl.body || '').replace(/\{\{firstName\}\}/g, firstName);
+                await sendTransactionalEmail(contactRow.email, firstName, tpl.subject, htmlContent, htmlContent.replace(/<[^>]+>/g, ''));
+                await pool.query(
+                  `INSERT INTO deal_activities (tenant_id, deal_id, contact_id, activity_type, note, created_by)
+                   VALUES ($1, $2, $3, 'automation_email', $4, 'automation')`,
+                  [tenantId, id, existing[0].contactId, `Auto-email sent: ${tpl.subject}`]
+                );
+              }
             }
           } catch (e) { logger.error('[deals] Stage automation email error:', e); }
         }

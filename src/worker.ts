@@ -643,26 +643,42 @@ const PLACEMENT_INTERVAL = setInterval(() => safeCron('Pipeline Placement', asyn
           console.warn(`[CRON] Pipeline placement failed for ${contact_id} (${funnelSlug}) — delivering assets anyway`);
         }
 
-        // Deliver purchase assets (WhatsApp + email) REGARDLESS of pipeline placement
-        try {
-          const { deliverPurchaseAssets } = await import('./services/assetDeliveryService');
-          const contactInfo = await pool.query(
-            `SELECT c.first_name,
-                    (SELECT channel_value FROM contact_channels WHERE contact_id = c.id AND channel_type = 'whatsapp' LIMIT 1) AS phone,
-                    (SELECT channel_value FROM contact_channels WHERE contact_id = c.id AND channel_type = 'email' AND is_primary = true LIMIT 1) AS email
-             FROM contacts c WHERE c.id = $1 LIMIT 1`,
-            [contact_id],
+        // Deliver purchase assets (WhatsApp + email) — HARD-DISABLED BY DEFAULT.
+        //
+        // Purchase delivery only runs when PURCHASE_DELIVERY_ENABLED === 'true'
+        // (opt-in). After the mass-send incident it stays off unless deliberately
+        // turned on — so a fresh deploy / re-enabled jobs can never repeat it.
+        // Even when enabled, `backfilled: true` events (historical purchases the
+        // backfill stamps for pipeline placement) are never delivered — those
+        // people already received their asset when they actually bought.
+        // (deliverPurchaseAssets ALSO enforces the flag at its source.)
+        const deliveryEnabled = process.env.PURCHASE_DELIVERY_ENABLED === 'true';
+        const isBackfilled = (payload as { backfilled?: boolean })?.backfilled === true;
+        if (!deliveryEnabled || isBackfilled) {
+          console.log(
+            `[CRON] Asset delivery skipped for ${contact_id} — ${!deliveryEnabled ? 'PURCHASE_DELIVERY_ENABLED not set (hard-disabled)' : 'backfilled/historical purchase'}`,
           );
-          if (contactInfo.rows.length > 0) {
-            const info = contactInfo.rows[0] as { first_name: string; phone: string | null; email: string | null };
-            await deliverPurchaseAssets({
-              contactId: contact_id, firstName: info.first_name,
-              phone: info.phone, email: info.email,
-              bump1, bump2, segment, funnelSlug,
-            });
+        } else {
+          try {
+            const { deliverPurchaseAssets } = await import('./services/assetDeliveryService');
+            const contactInfo = await pool.query(
+              `SELECT c.first_name,
+                      (SELECT channel_value FROM contact_channels WHERE contact_id = c.id AND channel_type = 'whatsapp' LIMIT 1) AS phone,
+                      (SELECT channel_value FROM contact_channels WHERE contact_id = c.id AND channel_type = 'email' AND is_primary = true LIMIT 1) AS email
+               FROM contacts c WHERE c.id = $1 LIMIT 1`,
+              [contact_id],
+            );
+            if (contactInfo.rows.length > 0) {
+              const info = contactInfo.rows[0] as { first_name: string; phone: string | null; email: string | null };
+              await deliverPurchaseAssets({
+                contactId: contact_id, firstName: info.first_name,
+                phone: info.phone, email: info.email,
+                bump1, bump2, segment, funnelSlug,
+              });
+            }
+          } catch (ae) {
+            console.error('[CRON] Asset delivery failed for contact', contact_id, ':', ae);
           }
-        } catch (ae) {
-          console.error('[CRON] Asset delivery failed for contact', contact_id, ':', ae);
         }
       } catch (e) {
         console.error('[CRON] Pipeline placement failed for contact', contact_id, ':', e);
