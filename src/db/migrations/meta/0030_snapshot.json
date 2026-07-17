@@ -1,5 +1,5 @@
 {
-  "id": "e98cfb67-98ef-452a-ba38-3a91abec5df4",
+  "id": "06e46d1f-c29d-433d-9661-5dbc3b549ea6",
   "prevId": "d4c61afa-2132-4ba2-9122-d9d4a64ece88",
   "version": "7",
   "dialect": "postgresql",
@@ -3167,7 +3167,35 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "invoice_series_tenant_type_fy_uniq_idx": {
+          "name": "invoice_series_tenant_type_fy_uniq_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "series_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "financial_year",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "invoice_series_tenant_id_tenants_id_fk": {
           "name": "invoice_series_tenant_id_tenants_id_fk",
