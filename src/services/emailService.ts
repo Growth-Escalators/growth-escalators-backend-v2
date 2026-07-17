@@ -125,6 +125,20 @@ export async function addContactToBrevo(
 }
 
 // ---------------------------------------------------------------------------
+// automatedEmailsEnabled — master kill-switch for AUTOMATED / bulk emails to
+// contacts (sequences, drip, purchase delivery, follow-ups, outreach, deal
+// automations). Default OFF: an automated path may only email contacts when
+// AUTOMATED_EMAILS_ENABLED === 'true'. User-initiated / transactional sends
+// (contract signer invites, auth emails, manual "send" buttons) do NOT call
+// this and are unaffected. This is the durable guarantee against a repeat of
+// the mass-send incident — nothing automated emails your contact list unless
+// the flag is deliberately turned on.
+// ---------------------------------------------------------------------------
+export function automatedEmailsEnabled(): boolean {
+  return process.env.AUTOMATED_EMAILS_ENABLED === 'true';
+}
+
+// ---------------------------------------------------------------------------
 // sendSequenceEmail
 // Looks up contact + email channel, picks template, sends email, logs message.
 // ---------------------------------------------------------------------------
@@ -133,6 +147,11 @@ export async function sendSequenceEmail(
   templateName: string,
   tenantId: string,
 ): Promise<{ success: boolean; mock?: boolean; reason?: string }> {
+  // Sequence/drip emails are automated marketing — gate on the master switch.
+  if (!automatedEmailsEnabled()) {
+    console.warn('[emailService] sequence email suppressed — AUTOMATED_EMAILS_ENABLED is off');
+    return { success: false, reason: 'automated_emails_disabled' };
+  }
   // Get contact
   const contactRows = await db
     .select()

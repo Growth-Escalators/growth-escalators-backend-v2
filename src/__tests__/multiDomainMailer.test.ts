@@ -25,6 +25,9 @@ describe('multiDomainMailer.sendColdEmail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env = { ...originalEnv };
+    // sendColdEmail is gated by the master automated-email kill-switch; this
+    // suite tests the send path, so enable it explicitly.
+    process.env.AUTOMATED_EMAILS_ENABLED = 'true';
     for (let i = 1; i <= 6; i++) {
       delete process.env[`PURELYMAIL_SMTP_USER_${i}`];
       delete process.env[`PURELYMAIL_SMTP_PASS_${i}`];
@@ -68,5 +71,13 @@ describe('multiDomainMailer.sendColdEmail', () => {
     });
     expect(mailerMocks.sendMail).toHaveBeenCalledOnce();
     expect(vi.mocked(pool.query).mock.calls[0][0]).toContain("status = 'healthy'");
+  });
+
+  it('is suppressed (throws, sends nothing) when AUTOMATED_EMAILS_ENABLED is off', async () => {
+    delete process.env.AUTOMATED_EMAILS_ENABLED;
+    await expect(
+      sendColdEmail({ to: 'x@example.com', subject: 's', body: 'b', fromName: 'A', tenantId: 't1' }),
+    ).rejects.toThrow(/AUTOMATED_EMAILS_ENABLED/);
+    expect(mailerMocks.sendMail).not.toHaveBeenCalled();
   });
 });

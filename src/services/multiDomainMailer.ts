@@ -45,6 +45,12 @@ function getInboxes() {
 }
 
 export async function sendColdEmail(params: SendParams): Promise<SendResult> {
+  // Master automated-email kill-switch (default OFF). Cold outreach is an
+  // automated send to contacts, so it is blocked unless AUTOMATED_EMAILS_ENABLED
+  // is explicitly turned on (in addition to any WIZMATCH_SENDING_ENABLED gate).
+  if (process.env.AUTOMATED_EMAILS_ENABLED !== 'true') {
+    throw new Error('cold email suppressed — AUTOMATED_EMAILS_ENABLED is off');
+  }
   const { host, port, inboxes } = getInboxes();
 
   if (inboxes.length === 0) {
@@ -123,6 +129,10 @@ function hashString(s: string): number {
 
 // Domain warmup sender — sends to friendly contacts
 export async function sendWarmupEmails(tenantId: string, warmupContacts: string[]) {
+  if (process.env.AUTOMATED_EMAILS_ENABLED !== 'true') {
+    console.warn('[multiDomainMailer] warmup emails suppressed — AUTOMATED_EMAILS_ENABLED is off');
+    return;
+  }
   const { host, port, inboxes } = getInboxes();
   if (inboxes.length === 0 || warmupContacts.length === 0) return;
 
