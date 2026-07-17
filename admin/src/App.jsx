@@ -262,6 +262,7 @@ export default function App() {
             <Route path="/wizmatch/tasks" element={<PrivateRoute><TasksBoardPage /></PrivateRoute>} />
             <Route path="/wizmatch/inbox" element={<PrivateRoute><InboxPage /></PrivateRoute>} />
             <Route path="/wizmatch/billing" element={<PrivateRoute><BillingPage /></PrivateRoute>} />
+            <Route path="/wizmatch/contracts" element={<PrivateRoute><ContractsPage /></PrivateRoute>} />
             <Route path="/wizmatch/finance" element={<PrivateRoute><FinancePage /></PrivateRoute>} />
             <Route path="/wizmatch/emails" element={<PrivateRoute><AppLayout><EmailTemplatesPage /></AppLayout></PrivateRoute>} />
             <Route path="/wizmatch/whatsapp-templates" element={<PrivateRoute><WhatsAppTemplatesPage /></PrivateRoute>} />
