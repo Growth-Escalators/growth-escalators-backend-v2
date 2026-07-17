@@ -10,6 +10,8 @@ export interface SigningTokenPayload {
   recipientId: string;
   /** issued-at (ms) — informational; expiry is enforced via the contract row. */
   iat: number;
+  /** random nonce so every mint is unique (so re-issuing always rotates the link, even same-ms). */
+  n?: string;
 }
 
 function secret(): string {
@@ -28,7 +30,7 @@ function sign(payloadB64: string): string {
 
 /** Mint a signing token for a recipient. */
 export function mintSigningToken(contractId: string, recipientId: string): string {
-  const payload: SigningTokenPayload = { contractId, recipientId, iat: Date.now() };
+  const payload: SigningTokenPayload = { contractId, recipientId, iat: Date.now(), n: crypto.randomBytes(6).toString('base64url') };
   const payloadB64 = b64url(Buffer.from(JSON.stringify(payload)));
   return `${payloadB64}.${sign(payloadB64)}`;
 }

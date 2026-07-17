@@ -43,6 +43,11 @@ export class MockESignProvider implements ESignatureProvider {
   private docs = new Map<string, MockDoc>();
   private seq = 0;
 
+  // autoSignOnSession simulates instant signing when a signing session is created
+  // — used for local/E2E completion (gated by ESIGN_MOCK_AUTOSIGN in the factory).
+  // Off by default so unit tests that drive signing explicitly via __sign are unaffected.
+  constructor(private readonly opts: { autoSignOnSession?: boolean } = {}) {}
+
   private nextId(prefix: string): string {
     this.seq += 1;
     return `${prefix}_${this.seq}`;
@@ -108,6 +113,10 @@ export class MockESignProvider implements ESignatureProvider {
         (input.recipientEmail && r.email === input.recipientEmail.trim().toLowerCase()),
     );
     if (!rcpt) throw new ESignProviderError('mock', 'recipient not found', 404);
+    if (this.opts.autoSignOnSession) {
+      rcpt.status = 'signed';
+      rcpt.signedAt = new Date().toISOString();
+    }
     return {
       signingUrl: `https://mock.esign.local/sign/${doc.id}/${rcpt.id}`,
       expiresAt: new Date(Date.now() + 3600_000).toISOString(),

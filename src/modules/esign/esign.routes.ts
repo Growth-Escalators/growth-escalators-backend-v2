@@ -23,12 +23,19 @@ router.post(
 router.get('/:id', requirePermission('CONTRACTS_VIEW'), idParam, c.getContract);
 router.get('/:id/audit', requirePermission('CONTRACTS_VIEW_AUDIT'), idParam, c.getAudit);
 router.get('/:id/download', requirePermission('CONTRACTS_DOWNLOAD'), idParam, c.downloadContract);
+router.get('/:id/file/:artifact', requirePermission('CONTRACTS_DOWNLOAD'), validateParams({ id: 'uuid|required', artifact: 'string|required' }), c.streamContractFile);
 router.post(
   '/:id/recipients',
   requirePermission('CONTRACTS_EDIT'),
   idParam,
   validateBody({ recipients: 'array|required' }),
   c.addRecipients,
+);
+router.post(
+  '/:id/recipients/:rid/signing-link',
+  requirePermission('CONTRACTS_SEND'),
+  validateParams({ id: 'uuid|required', rid: 'uuid|required' }),
+  c.reissueSigningLink,
 );
 router.post('/:id/generate', requirePermission('CONTRACTS_EDIT'), idParam, c.generateContract);
 router.post('/:id/approve', requirePermission('CONTRACTS_APPROVE'), idParam, c.approveContract);

@@ -50,6 +50,8 @@ describe('/api/contracts router registration', () => {
     expect(routeExists(contractsRouter, '/:id/send', 'post')).toBe(true);
     expect(routeExists(contractsRouter, '/:id/void', 'post')).toBe(true);
     expect(routeExists(contractsRouter, '/:id/clone', 'post')).toBe(true);
+    expect(routeExists(contractsRouter, '/:id/file/:artifact', 'get')).toBe(true);
+    expect(routeExists(contractsRouter, '/:id/recipients/:rid/signing-link', 'post')).toBe(true);
   });
 
   it('declares /number/preview before the /:id catch-all', () => {

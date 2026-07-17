@@ -45,6 +45,7 @@ export default function ContractsPage() {
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [detail, setDetail] = useState(null); // { contract, recipients, events }
+  const [links, setLinks] = useState({}); // recipientId -> signing url
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +114,15 @@ export default function ContractsPage() {
       setDetail(res);
     } catch (e) {
       setError(e.message || 'Failed to load contract');
+    }
+  }
+
+  async function copyLink(recipientId) {
+    try {
+      const res = await apiFetch(`/api/contracts/${detail.contract.id}/recipients/${recipientId}/signing-link`, { method: 'POST' });
+      setLinks((prev) => ({ ...prev, [recipientId]: res.url }));
+    } catch (e) {
+      setError(e.message || 'Could not create link');
     }
   }
 
@@ -235,13 +245,26 @@ export default function ContractsPage() {
             </div>
 
             <h3 className="mb-2 text-sm font-semibold text-neutral-700">Recipients</h3>
-            <ul className="mb-4 space-y-1 text-sm">
-              {detail.recipients.map((r) => (
-                <li key={r.id} className="flex items-center justify-between rounded border border-neutral-100 px-2 py-1">
-                  <span>{r.name} <span className="text-neutral-400">({r.signingRole?.replace(/_/g, ' ')})</span></span>
-                  <span className="text-xs text-neutral-500">{r.status}</span>
-                </li>
-              ))}
+            <ul className="mb-4 space-y-2 text-sm">
+              {detail.recipients.map((r) => {
+                const canLink = ['SENT', 'VIEWED', 'PARTIALLY_SIGNED'].includes(detail.contract.status) && r.status !== 'signed';
+                return (
+                  <li key={r.id} className="rounded border border-neutral-100 px-2 py-1">
+                    <div className="flex items-center justify-between">
+                      <span>{r.name} <span className="text-neutral-400">({r.signingRole?.replace(/_/g, ' ')})</span></span>
+                      <span className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-500">{r.status}</span>
+                        {canLink && (
+                          <button data-testid={`copy-link-${r.id}`} className="rounded bg-neutral-200 px-2 py-0.5 text-xs" onClick={() => copyLink(r.id)}>Copy link</button>
+                        )}
+                      </span>
+                    </div>
+                    {links[r.id] && (
+                      <input data-testid={`signing-link-${r.id}`} readOnly value={links[r.id]} onFocus={(e) => e.target.select()} className="mt-1 w-full rounded border border-neutral-200 px-2 py-1 text-xs text-neutral-600" />
+                    )}
+                  </li>
+                );
+              })}
             </ul>
 
             {detail.contract.status === 'COMPLETED' && (
