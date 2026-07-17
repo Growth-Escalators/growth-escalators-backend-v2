@@ -10,7 +10,9 @@ let singleton: ESignatureProvider | null = null;
 export function getESignProvider(): ESignatureProvider {
   if (singleton) return singleton;
   const which = (process.env.ESIGN_PROVIDER || 'documenso').toLowerCase();
-  singleton = which === 'mock' ? new MockESignProvider() : new DocumensoProvider();
+  singleton = which === 'mock'
+    ? new MockESignProvider({ autoSignOnSession: process.env.ESIGN_MOCK_AUTOSIGN === '1' })
+    : new DocumensoProvider();
   return singleton;
 }
 

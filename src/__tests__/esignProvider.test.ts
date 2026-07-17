@@ -102,6 +102,26 @@ describe('MockESignProvider — full lifecycle contract', () => {
   });
 });
 
+describe('MockESignProvider — autoSignOnSession (E2E/local flag)', () => {
+  it('auto-signs a recipient when a signing session is created', async () => {
+    const p = new MockESignProvider({ autoSignOnSession: true });
+    const r = await p.createDocument({ title: 'NDA', pdf: PDF, recipients: [recipients()[0]] });
+    await p.sendDocument(r.externalDocumentId);
+    expect((await p.getDocumentStatus(r.externalDocumentId)).status).toBe('pending');
+    await p.createSigningSession({ externalDocumentId: r.externalDocumentId, recipientEmail: 'client@example.com' });
+    // single signer auto-signed → whole document completed
+    expect((await p.getDocumentStatus(r.externalDocumentId)).status).toBe('completed');
+  });
+
+  it('default (flag off) does NOT auto-sign', async () => {
+    const p = new MockESignProvider();
+    const r = await p.createDocument({ title: 'NDA', pdf: PDF, recipients: [recipients()[0]] });
+    await p.sendDocument(r.externalDocumentId);
+    await p.createSigningSession({ externalDocumentId: r.externalDocumentId, recipientEmail: 'client@example.com' });
+    expect((await p.getDocumentStatus(r.externalDocumentId)).status).toBe('pending');
+  });
+});
+
 describe('provider factory', () => {
   afterEach(() => resetESignProvider());
 

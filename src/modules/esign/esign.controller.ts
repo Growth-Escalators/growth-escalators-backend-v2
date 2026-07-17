@@ -3,8 +3,10 @@
 // service, return JSON. Thrown HttpErrors are serialized by the global error
 // handler in src/index.ts.
 import { type Request, type Response, type NextFunction } from 'express';
+import fs from 'fs';
 import * as service from './esign.service';
 import { peekNextContractNumber } from './contract-numbering';
+import { isLocalReference, resolveLocalPath, getContractDownloadUrl } from './document-storage.service';
 
 function ctxOf(req: Request): service.Ctx {
   const u = req.user!;
@@ -90,4 +92,32 @@ export const downloadContract = h(async (req, res) => {
   }
   const url = await service.getDownloadUrl(ctxOf(req), String(req.params.id), artifact as 'generated' | 'completed' | 'audit-certificate');
   res.json({ url, expiresInSeconds: Number(process.env.CONTRACTS_SIGNED_URL_TTL_SECONDS) || 300 });
+});
+
+// Stream a stored artifact directly (used for local-filesystem storage; redirects
+// to a presigned URL for R2-backed refs).
+export const streamContractFile = h(async (req, res) => {
+  const artifact = String(req.params.artifact);
+  if (!['generated', 'completed', 'audit-certificate'].includes(artifact)) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'invalid artifact' } });
+    return;
+  }
+  const ref = await service.getArtifactRef(ctxOf(req), String(req.params.id), artifact as service.DownloadArtifact);
+  if (isLocalReference(ref)) {
+    const filePath = resolveLocalPath(ref);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'file not found' } });
+      return;
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${artifact}.pdf"`);
+    fs.createReadStream(filePath).pipe(res);
+    return;
+  }
+  res.redirect(302, await getContractDownloadUrl(ref));
+});
+
+export const reissueSigningLink = h(async (req, res) => {
+  const url = await service.reissueSigningLink(ctxOf(req), String(req.params.id), String(req.params.rid));
+  res.json({ url });
 });

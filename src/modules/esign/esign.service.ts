@@ -16,7 +16,7 @@ import type { ContractRow, RecipientRow, EventRow } from './esign.repository';
 import { getESignProvider } from './providers';
 import type { ProviderRecipientInput } from './esign.types';
 import { generateContractPdf } from './contract-pdf';
-import { storeContractArtifact, getContractDownloadUrl } from './document-storage.service';
+import { storeContractArtifact, getContractDownloadUrl, isLocalReference } from './document-storage.service';
 import { sha256Hex } from './document-hash.service';
 import { getNextContractNumber } from './contract-numbering';
 import { mintSigningToken, hashSigningToken } from './contract-signing-link';
@@ -284,6 +284,24 @@ export async function inviteNextSigner(ctx: Ctx, id: string): Promise<void> {
   await sendSignInvite(next, contract, buildSignUrl(token));
 }
 
+/**
+ * Re-issue (and return) a per-recipient signing link — for a "copy/resend link"
+ * action. Re-minting rotates the stored hash, so any previously issued link for
+ * that recipient is invalidated. Only valid while the contract is open for signing.
+ */
+export async function reissueSigningLink(ctx: Ctx, id: string, rid: string): Promise<string> {
+  const contract = requireFound(await repo.getContract(ctx.tenantId, id));
+  if (!['SENT', 'VIEWED', 'PARTIALLY_SIGNED'].includes(contract.status)) {
+    throw new HttpError(409, `contract is not open for signing (status ${contract.status})`, 'CONFLICT');
+  }
+  const recipient = await repo.getRecipient(ctx.tenantId, rid);
+  if (!recipient || recipient.contractId !== id) throw new HttpError(404, 'recipient not found', 'NOT_FOUND');
+  const token = mintSigningToken(id, rid);
+  await repo.updateRecipient(ctx.tenantId, rid, { signingTokenHash: hashSigningToken(token) });
+  await appendEvent(ctx, id, 'contract.link_reissued', { recipientId: rid }, rid);
+  return buildSignUrl(token);
+}
+
 // ---- void + clone-to-new-version ----
 export async function voidContract(ctx: Ctx, id: string, reason: string): Promise<ContractDetail> {
   const contract = requireFound(await repo.getContract(ctx.tenantId, id));
@@ -339,13 +357,26 @@ export async function cloneContract(ctx: Ctx, id: string): Promise<ContractDetai
 }
 
 // ---- downloads ----
-export async function getDownloadUrl(ctx: Ctx, id: string, artifact: 'generated' | 'completed' | 'audit-certificate'): Promise<string> {
+export type DownloadArtifact = 'generated' | 'completed' | 'audit-certificate';
+
+function selectArtifactRef(contract: ContractRow, artifact: DownloadArtifact): string | null {
+  return artifact === 'completed' ? contract.completedFileKey
+    : artifact === 'audit-certificate' ? contract.auditCertificateFileKey
+      : contract.generatedFileKey;
+}
+
+/** The raw stored reference (r2:// or local://) for an artifact — used by the stream route. */
+export async function getArtifactRef(ctx: Ctx, id: string, artifact: DownloadArtifact): Promise<string> {
   const contract = requireFound(await repo.getContract(ctx.tenantId, id));
-  const ref =
-    artifact === 'completed' ? contract.completedFileKey
-      : artifact === 'audit-certificate' ? contract.auditCertificateFileKey
-        : contract.generatedFileKey;
+  const ref = selectArtifactRef(contract, artifact);
   if (!ref) throw new HttpError(404, `no ${artifact} document available`, 'NOT_FOUND');
+  return ref;
+}
+
+export async function getDownloadUrl(ctx: Ctx, id: string, artifact: DownloadArtifact): Promise<string> {
+  const ref = await getArtifactRef(ctx, id, artifact);
+  // Local-backed artifacts are served by the authed stream route; R2 uses a presigned URL.
+  if (isLocalReference(ref)) return `/api/contracts/${id}/file/${artifact}`;
   return getContractDownloadUrl(ref);
 }
 

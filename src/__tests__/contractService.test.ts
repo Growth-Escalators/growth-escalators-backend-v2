@@ -99,6 +99,23 @@ describe('contract lifecycle', () => {
     expect(types).toEqual(expect.arrayContaining(['contract.created', 'contract.generated', 'contract.approved', 'contract.sent']));
   });
 
+  it('reissues a signing link for a recipient on a SENT contract (rotates the stored hash)', async () => {
+    const { contract, recipients } = await service.createContract(ctx, { title: 'MSA', recipients: twoParty() });
+    await service.generateContract(ctx, contract.id);
+    await service.approveContract(ctx, contract.id);
+    await service.sendContract(ctx, contract.id);
+    const rid = recipients[0].id;
+    const before = stores.recipients.get(rid).signingTokenHash;
+    const url = await service.reissueSigningLink(ctx, contract.id, rid);
+    expect(url).toContain('/sign/');
+    expect(stores.recipients.get(rid).signingTokenHash).not.toBe(before); // rotated → old link invalidated
+  });
+
+  it('refuses to reissue a link for a DRAFT contract', async () => {
+    const { contract, recipients } = await service.createContract(ctx, { title: 'x', recipients: twoParty() });
+    await expect(service.reissueSigningLink(ctx, contract.id, recipients[0].id)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
   it('enforces the state machine: cannot approve a DRAFT (skip generate)', async () => {
     const { contract } = await service.createContract(ctx, { title: 'x', recipients: twoParty() });
     await expect(service.approveContract(ctx, contract.id)).rejects.toBeInstanceOf(ContractStateError);

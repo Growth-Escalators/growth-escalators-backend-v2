@@ -16,6 +16,27 @@ import {
 } from '../../utils/r2';
 import { HttpError } from '../../utils/errors';
 import { sha256Hex } from './document-hash.service';
+import fs from 'fs';
+import path from 'path';
+
+// Local filesystem storage backend — ONLY when CONTRACTS_STORAGE=local (dev / E2E
+// without R2). No silent fallback: with the flag unset, R2 stays the backend and
+// fails loud if unconfigured (so prod never silently writes to Railway's ephemeral
+// disk). References are `local://<key>`; served by the authed stream route.
+function localStorageEnabled(): boolean {
+  return process.env.CONTRACTS_STORAGE === 'local';
+}
+function localRoot(): string {
+  return process.env.CONTRACTS_STORAGE_DIR || path.resolve(process.cwd(), 'storage', 'contracts');
+}
+export function isLocalReference(reference: string): boolean {
+  return typeof reference === 'string' && reference.startsWith('local://');
+}
+/** Map a `local://<key>` reference to an on-disk path under the local root (traversal-safe: key is server-built). */
+export function resolveLocalPath(reference: string): string {
+  const key = reference.replace(/^local:\/\//, '');
+  return path.join(localRoot(), key);
+}
 
 export type ContractArtifact =
   | 'source'
@@ -84,6 +105,14 @@ export async function storeContractArtifact(input: StoreArtifactInput): Promise<
   const key = buildContractKey(tenantId, contractId, version, artifact);
   const contentType =
     input.contentType ?? (artifact === 'metadata' ? 'application/json' : 'application/pdf');
+
+  if (localStorageEnabled()) {
+    const filePath = path.join(localRoot(), key);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, buffer);
+    return { reference: `local://${key}`, hash: sha256Hex(buffer), key };
+  }
+
   // uploadPrivateToR2 writes a '/'-containing key verbatim (after per-segment
   // sanitisation), so the full key above is used as-is.
   const reference = await uploadPrivateToR2(buffer, key, contentType);
