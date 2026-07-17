@@ -69,4 +69,12 @@ async function main() {
   process.exit(exitCode);
 }
 
-main();
+// Only run as the entrypoint (`node dist/scripts/migrate.js`), not when
+// this module is imported elsewhere (e.g. migrateLock.test.ts importing
+// runMigrationsWithLock) — same guard pattern as worker.ts. Without this,
+// importing the module for its exported function still fires a real DB
+// connection attempt + eventual process.exit() in the background, which
+// intermittently aborts whatever test run happened to import it.
+if (require.main === module) {
+  main();
+}
