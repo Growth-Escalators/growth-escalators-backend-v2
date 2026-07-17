@@ -47,7 +47,10 @@ export default function ContractsPage() {
   const [detail, setDetail] = useState(null); // { contract, recipients, events }
   const [links, setLinks] = useState({}); // recipientId -> signing url
   const fileInputRef = useRef(null);
-  const [uploadTargetId, setUploadTargetId] = useState(''); // contract awaiting an uploaded PDF
+  // Kept in a ref (not state): the OS file chooser resolves asynchronously after
+  // the button click, so onFileChosen must read the target id deterministically
+  // regardless of React re-render timing.
+  const uploadTargetIdRef = useRef('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,7 +142,7 @@ export default function ContractsPage() {
 
   // Bring-your-own-PDF: open the file picker for a specific DRAFT contract.
   function pickPdf(id) {
-    setUploadTargetId(id);
+    uploadTargetIdRef.current = id;
     setError('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -149,11 +152,11 @@ export default function ContractsPage() {
 
   async function onFileChosen(e) {
     const file = e.target.files?.[0];
-    const id = uploadTargetId;
+    const id = uploadTargetIdRef.current;
     if (!file || !id) return;
     if (file.type && file.type !== 'application/pdf') {
       setError('Please choose a PDF file.');
-      setUploadTargetId('');
+      uploadTargetIdRef.current = '';
       return;
     }
     setBusyId(id);
@@ -169,7 +172,7 @@ export default function ContractsPage() {
       setError(err.message || 'Upload failed');
     } finally {
       setBusyId('');
-      setUploadTargetId('');
+      uploadTargetIdRef.current = '';
     }
   }
 
