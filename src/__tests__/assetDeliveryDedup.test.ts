@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // H13 — the pipeline-placement cron (worker.ts) calls deliverPurchaseAssets
 // again every 5 minutes for any contact stuck failing pipeline placement,
@@ -37,6 +37,12 @@ describe('deliverPurchaseAssets — pre-send dedupe (H13)', () => {
     mockSendWhatsAppMessage.mockResolvedValue(true);
     mockSendSlackDM.mockResolvedValue(undefined);
     mockGetFunnelConfig.mockResolvedValue(null);
+    // This suite tests the delivery/dedupe logic, which only runs when purchase
+    // delivery is enabled (hard-off by default in prod, see assetDeliveryService).
+    process.env.PURCHASE_DELIVERY_ENABLED = 'true';
+  });
+  afterEach(() => {
+    delete process.env.PURCHASE_DELIVERY_ENABLED;
   });
 
   it('skips the send entirely when a delivery already succeeded in the last 24h', async () => {
@@ -102,5 +108,18 @@ describe('deliverPurchaseAssets — pre-send dedupe (H13)', () => {
     });
 
     expect(mockSendWhatsAppMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing (hard-disabled) when PURCHASE_DELIVERY_ENABLED is not "true"', async () => {
+    delete process.env.PURCHASE_DELIVERY_ENABLED;
+
+    await deliverPurchaseAssets({
+      contactId: 'contact-off', firstName: 'Ghost', phone: '919999999995', email: 'ghost@example.com',
+      bump1: false, bump2: false, segment: 'd2c', funnelSlug: 'ecom',
+    });
+
+    // Returns before the dedupe SELECT, any send, or any delivery-log write.
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockSendWhatsAppMessage).not.toHaveBeenCalled();
   });
 });
