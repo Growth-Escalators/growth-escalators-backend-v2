@@ -643,22 +643,20 @@ const PLACEMENT_INTERVAL = setInterval(() => safeCron('Pipeline Placement', asyn
           console.warn(`[CRON] Pipeline placement failed for ${contact_id} (${funnelSlug}) — delivering assets anyway`);
         }
 
-        // Deliver purchase assets (WhatsApp + email) — but NEVER for backfilled
-        // (historical) purchases, and never when the kill-switch is set.
+        // Deliver purchase assets (WhatsApp + email) — HARD-DISABLED BY DEFAULT.
         //
-        // The comprehensive-purchase-backfill (index.ts) stamps events with
-        // `backfilled: true` to PLACE past purchases into pipelines for CRM
-        // visibility — those people already received their asset when they
-        // actually bought, so re-emailing them a "your purchase is ready" note
-        // is wrong. A large mislabeled backlog of such events otherwise makes
-        // this cron mass-email ~100 contacts every run. DISABLE_PURCHASE_DELIVERY
-        // is a dedicated kill-switch so delivery can be halted without disabling
-        // every other background job (unlike DISABLE_BACKGROUND_JOBS).
-        const deliveryDisabled = process.env.DISABLE_PURCHASE_DELIVERY === 'true';
+        // Purchase delivery only runs when PURCHASE_DELIVERY_ENABLED === 'true'
+        // (opt-in). After the mass-send incident it stays off unless deliberately
+        // turned on — so a fresh deploy / re-enabled jobs can never repeat it.
+        // Even when enabled, `backfilled: true` events (historical purchases the
+        // backfill stamps for pipeline placement) are never delivered — those
+        // people already received their asset when they actually bought.
+        // (deliverPurchaseAssets ALSO enforces the flag at its source.)
+        const deliveryEnabled = process.env.PURCHASE_DELIVERY_ENABLED === 'true';
         const isBackfilled = (payload as { backfilled?: boolean })?.backfilled === true;
-        if (deliveryDisabled || isBackfilled) {
+        if (!deliveryEnabled || isBackfilled) {
           console.log(
-            `[CRON] Asset delivery skipped for ${contact_id} — ${deliveryDisabled ? 'DISABLE_PURCHASE_DELIVERY=true' : 'backfilled/historical purchase'}`,
+            `[CRON] Asset delivery skipped for ${contact_id} — ${!deliveryEnabled ? 'PURCHASE_DELIVERY_ENABLED not set (hard-disabled)' : 'backfilled/historical purchase'}`,
           );
         } else {
           try {
