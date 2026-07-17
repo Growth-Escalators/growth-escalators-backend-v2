@@ -1,6 +1,6 @@
 {
-  "id": "f2523cf7-865d-410e-91c0-4ea625a215b7",
-  "prevId": "e98cfb67-98ef-452a-ba38-3a91abec5df4",
+  "id": "1732b41a-0ea7-4e66-9a5f-c750804ceb2a",
+  "prevId": "06e46d1f-c29d-433d-9661-5dbc3b549ea6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2581,6 +2581,12 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -2634,6 +2640,27 @@
           "columns": [
             {
               "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "events_type_processed_idx": {
+          "name": "events_type_processed_idx",
+          "columns": [
+            {
+              "expression": "event_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "processed_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4516,12 +4543,6 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
         "first_name": {
           "name": "first_name",
           "type": "text",
@@ -4683,38 +4704,9 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "prospects_tenant_id_idx": {
-          "name": "prospects_tenant_id_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
-      "foreignKeys": {
-        "prospects_tenant_id_tenants_id_fk": {
-          "name": "prospects_tenant_id_tenants_id_fk",
-          "tableFrom": "prospects",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
