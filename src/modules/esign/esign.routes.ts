@@ -12,6 +12,14 @@ const idParam = validateParams({ id: 'uuid|required' });
 // collection
 router.get('/', requirePermission('CONTRACTS_VIEW'), c.listContracts);
 router.get('/number/preview', requirePermission('CONTRACTS_CREATE'), c.previewNumber);
+router.get('/templates', requirePermission('CONTRACTS_CREATE'), c.listTemplates);
+router.get('/templates/documenso', requirePermission('CONTRACTS_CREATE'), c.listDocumensoTemplates);
+router.post(
+  '/templates',
+  requirePermission('CONTRACTS_CREATE'),
+  validateBody({ name: 'string|required', documensoTemplateId: 'string|required', category: 'string|optional', description: 'string|optional' }),
+  c.registerTemplate,
+);
 router.post(
   '/',
   requirePermission('CONTRACTS_CREATE'),
